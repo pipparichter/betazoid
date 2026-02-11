@@ -1,3 +1,4 @@
 /data
 betazoid.egg-info 
 **/__pycache__
+/build
