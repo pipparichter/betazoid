@@ -25,14 +25,15 @@ BBMAP_PARAMS['minhits'] = 2 # Minimum number of K-mer matches to consider a read
 def run_bbmap(ref_path, reads_path_1:str=None, reads_path_2:str=None, output_path:str=None):
     ''''''
     cmd = ['bbmap.sh']
-    cmd += ['in1', reads_path_1]
-    cmd += ['in2', reads_path_2]
-    cmd += ['ref', ref_path]
-    cmd += ['out', output_path]
-    for param, value in BBMAP_PARAMS.items():
-        cmd += [param, str(value)]
-    print('run_bbmap:', ' '.join(cmd))
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    cmd += [f'in1={reads_path_1}']
+    cmd += [f'in1={reads_path_2}']
+    cmd += [f'ref={ref_path}']
+    cmd += [f'out={output_path}']
+
+    cmd += [f'{param}={str(value)}' for param, value in BBMAP_PARAMS.items()]
+    cmd = ' '.join(cmd)
+    print('run_bbmap:', cmd)
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
 
 
 def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=None, reads_path_2:str=None):
