@@ -30,7 +30,7 @@ def run_bbmap(ref_path, reads_path_1:str=None, reads_path_2:str=None, output_pat
     cmd += ['ref', ref_path]
     cmd += ['out', output_path]
     for param, value in BBMAP_PARAMS.items():
-        cmd += [param, value]
+        cmd += [param, str(value)]
     
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
