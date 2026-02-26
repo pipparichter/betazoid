@@ -5,8 +5,6 @@ import subprocess
 from src.files import FASTAFile, BamFile, FLAGS
 import io
 
-
-
 BBMAP_PARAMS = dict()
 BBMAP_PARAMS['minid'] = 0.95 # Minimum percent identity for an alignment to be considered mapped, applied only to the aligned portion of the read. 
 BBMAP_PARAMS['idfilter'] = 0.97 # Filters the entire read for identity after alignment, applied over the entire read.
@@ -53,7 +51,7 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
         output_paths.append(output_path_i)
 
     df = pd.concat([BamFile.from_file(path).to_df() for path in output_paths])
-    df['strand'] = np.select([(df.reverse_strand & ~df.unmapped), (~df.reverse_strand & ~df.unmapped), (df.unmapped)], ['-', '+', 'none'], default=None)
+    df['strand'] = np.select([(df.reverse_strand), (~df.reverse_strand)], ['-', '+'], default='none')
     df['read_number'] = np.select([(df.read_paired & ~df.read_1), (df.read_paired & df.read_2), (~df.read_paired)], ['(1)', '(2)', ''], default='none')
     df['read_id'] = [read_id + read_number for read_id, read_number in zip(df.read_id, df.read_number)]
     df = df.drop_duplicates(['read_id', 'strand'])
@@ -62,11 +60,26 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
 
 
 
+# Need to think a bit about the best way to do this... 
+# Two approaches are k-mer or overlap graph. 
 
-class AssemblyGraph():
+# https://academic.oup.com/bioinformatics/article/21/suppl_2/ii79/227189?login=true
+# https://www.pnas.org/doi/10.1073/pnas.171285098
+
+class KmerGraph():
     pass 
 
-# Rules for drawing an edge are
+    def _get_sequences(reads_df):
+
+        # Include reads in the orientation they were mapped to the contig. If the read's mate is mapped in one orientation, even if the read
+        # itself is unmapped, enforce the opposite orientation
+        pass 
+
+    def __init__(self, reads_df:pd.DataFrame, k:int=10):
+        self.k = k 
+        
+
+# Rules for drawing an edge ar
 
 
 

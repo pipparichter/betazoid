@@ -35,6 +35,7 @@ class BamFile():
     def __init__(self, path:str=None):
         self.path = path  
 
+    @classmethod
     def from_file(cls, path:str):
         return cls(path=path)
     
