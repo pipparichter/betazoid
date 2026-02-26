@@ -1,8 +1,21 @@
 NOTES = dict()
-
-
-
-
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_346753'] = 'Seed contig with DNA polymerase B.'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_6662'] = 'Multiple annotated proteins, including many bacterial. Likely a phage. X'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_17251'] = 'Multiple annotated proteins, e.g. sugar epimerase. About half of proteins are annotated bacterial. X'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_290644'] = 'Has another type B DNA polymerase. Also a Betazoid seed contig.'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_300679'] = 'No annotations.'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_231049'] = 'No annotations.'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_238612'] = 'Has a bacterial protease degQ. X'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_241552'] = 'No annotations.'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_51309'] = 'Has two hypothetical proteins annotated with Borg taxonomy.'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_279421'] = 'No annotations.'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_300679'] = 'No annotations.'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_338320'] = 'No annotations.'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_194246'] = 'Likely phage based on aligned contigs. X'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_58476'] = 'One hypothetical protein annotated as belonging to Aminobacterium colombiense.'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_267693'] = 'One hypothetical protein assigned Orange Borg taxonomy'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_279421'] = 'Encodes a partial protein which is likely phage ribonuclease. X'
+NOTES['Nantong_Groundwater_SRR22387873_scaffold_78449'] = 'Contig aligns to a contig with a bacterial phage protein. X'
 
 # NOTES['Nantong_Groundwater_SRR22387873_scaffold_525'] = 'No clue about this one, asking Jill. She thinks phage. X'
 # NOTES['Nantong_Groundwater_SRR22387873_scaffold_9140'] = 'Several bacterial genes with annotated functions. X'
