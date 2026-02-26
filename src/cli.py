@@ -15,8 +15,8 @@ def recruit_reads():
     parser.add_argument('--ref-path', type=str)
     parser.add_argument('--job-name', type=str, default=JOB_NAME)
     parser.add_argument('--n-iters', type=int, default=2)
-    parser.add_argument('--reads-path-1', type='str', default=READS_PATH_1)
-    parser.add_argument('--reads-path-2', type='str', default=READS_PATH_2)
+    parser.add_argument('--reads-path-1', type=str, default=READS_PATH_1)
+    parser.add_argument('--reads-path-2', type=str, default=READS_PATH_2)
     args = parser.parse_args()
 
     df = graph.recruit_reads(args.job_name, args.ref_path, n_iters=args.n_iters, reads_path_1=args.reads_path_1, reads_path_2=args.reads_path_2, output_dir=OUTPUT_DIR)
