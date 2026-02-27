@@ -12,7 +12,7 @@ BBMAP_PARAMS = dict()
 BBMAP_PARAMS['minid'] = 0.95 # Minimum percent identity for an alignment to be considered mapped, applied only to the aligned portion of the read. 
 BBMAP_PARAMS['idfilter'] = 0.97 # Filters the entire read for identity after alignment, applied over the entire read.
 BBMAP_PARAMS['ambiguous'] = 'all'
-BBMAP_PARAMS['minratio'] = 0.96
+BBMAP_PARAMS['minratio'] = 0.5
 BBMAP_PARAMS['editfilter'] = 5 # Consider reads with fewer than 5 indels or mismatches as mapped.
 BBMAP_PARAMS['local'] = 't' # Allow local alignments. 
 # BBMAP_PARAMS['unmapped'] = 't' # Include reads that fail the thresholds. 
@@ -53,7 +53,7 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
     run_bbmap(ref_path, reads_path_1=reads_path_1, reads_path_2=reads_path_2, output_path=output_paths[0])
 
     for i in range(1, n_iters):
-        ref_path_i, n = BamFile.from_file(output_paths[-1]).to_fasta(include_flags=FLAGS['unmapped'])
+        ref_path_i, n = BamFile.from_file(output_paths[-1]).to_fasta(include_flags=FLAGS['unmapped'] + FLAGS['read_paired'], exclude_flags=FLAGS['mate_unmapped'])
         if (n == 0): # n is the number of sequences written to the FASTA file. 
             print(f'recruit_reads: No additional unmapped reads recruited. Exiting at iteration {i}.')
             break 
