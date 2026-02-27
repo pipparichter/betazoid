@@ -55,6 +55,14 @@ class BamFile():
             cmd += ['-F', str(exclude_flags)]
         cmd += [self.path]
         return cmd 
+
+    @staticmethod
+    def _get_strands(df):
+        '''Note that if both mate pairs are mapped, but the orientation is the same, the strand will be set to None 
+        to flag the ambiguity in the mapping.'''
+        conditions = [(df.unmapped & df.mate_reverse_strand) | (~df.unmapped & (~df.reverse_strand))]
+        conditions += [(df.unmapped & ~df.mate_reverse_strand) | (~df.unmapped & (df.reverse_strand))]
+        return np.select(conditions, ['+', '-'], default=None)
     
     def to_df(self, include_flags:int=None, exclude_flags:int=None):
 
@@ -66,6 +74,8 @@ class BamFile():
         # Parse the flags and add stored metadata to the DataFrame. 
         for col, data in BamFile._parse_flags(df.flag).items():
             df[col] = data 
+        df['strand'] = BamFile._get_strands(df) # Assign a strand to each read.
+
         return df 
  
 

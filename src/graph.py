@@ -4,12 +4,15 @@ import pandas as pd
 import subprocess
 from src.files import FASTAFile, BamFile, FLAGS
 import io
+from Bio.Seq import Seq
+
+get_reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
 
 BBMAP_PARAMS = dict()
 BBMAP_PARAMS['minid'] = 0.95 # Minimum percent identity for an alignment to be considered mapped, applied only to the aligned portion of the read. 
 BBMAP_PARAMS['idfilter'] = 0.97 # Filters the entire read for identity after alignment, applied over the entire read.
 BBMAP_PARAMS['ambiguous'] = 'all'
-BBMAP_PARAMS['minratio'] = 0.95 
+BBMAP_PARAMS['minratio'] = 0.96
 BBMAP_PARAMS['editfilter'] = 5 # Consider reads with fewer than 5 indels or mismatches as mapped.
 BBMAP_PARAMS['local'] = 't' # Allow local alignments. 
 # BBMAP_PARAMS['unmapped'] = 't' # Include reads that fail the thresholds. 
@@ -24,7 +27,7 @@ def run_bbmap(ref_path, reads_path_1:str=None, reads_path_2:str=None, output_pat
     ''''''
     cmd = ['bbmap.sh']
     cmd += [f'in1={reads_path_1}']
-    cmd += [f'in1={reads_path_2}']
+    cmd += [f'in2={reads_path_2}']
     cmd += [f'ref={ref_path}']
     cmd += [f'out={output_path}']
 
@@ -32,6 +35,15 @@ def run_bbmap(ref_path, reads_path_1:str=None, reads_path_2:str=None, output_pat
     cmd = ' '.join(cmd)
     print('run_bbmap:', cmd)
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
+
+
+def check_reads(df):
+    '''Confirm that the recruited reads match what I am assuming about them.'''
+    checks = dict()
+    checks['one_mate_mapped'] = np.all((~df.mate_unmapped) | (~df.unmapped))
+    checks['read_strand_assigned'] = np.any(df.strand.isnull())
+    for name, value in checks.items():
+        assert value, f'check_reads: Failed check {name}.'
 
 
 def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=None, reads_path_2:str=None):
@@ -51,24 +63,43 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
         output_paths.append(output_path_i)
 
     df = pd.concat([BamFile.from_file(path).to_df() for path in output_paths])
-    df['strand'] = np.select([(df.reverse_strand), (~df.reverse_strand)], ['-', '+'], default='none')
-    df['read_number'] = np.select([(df.read_paired & ~df.read_1), (df.read_paired & df.read_2), (~df.read_paired)], ['(1)', '(2)', ''], default='none')
-    df['read_id'] = [read_id + read_number for read_id, read_number in zip(df.read_id, df.read_number)]
-    df = df.drop_duplicates(['read_id', 'strand'])
-
+    df['read_number'] = np.select([(df.read_paired & ~df.read_1), (df.read_paired & df.read_2), (~df.read_paired)], ['1', '2', ''], default='')
+    df = df.drop_duplicates(['read_id', 'strand', 'read_number'])
     return df
 
 
 
 # Need to think a bit about the best way to do this... 
-# Two approaches are k-mer or overlap graph. 
+# Two approaches are k-mer or overlap graph. Apparently k-mer graphs are better for short reads, but overlap graphs more closely mimic the manual
+# curation process and might allow easier integration of pair information. 
 
 # https://academic.oup.com/bioinformatics/article/21/suppl_2/ii79/227189?login=true
 # https://www.pnas.org/doi/10.1073/pnas.171285098
 
-class KmerGraph():
-    pass 
 
+def get_reads(df):
+
+    df = df[~df.strand.isnull()].copy() # Remove all cases where the strand is unknown, which occurs if both reads are mapped in the same direction. 
+    # Include reads in the orientation they were mapped to the contig. If the read's mate is mapped in one orientation, even if the read
+    # itself is unmapped, enforce the opposite orientation
+    reads = list()
+    for row in df.itertuples():
+        read_id = f'{row.read_id} {row.read_number} {row.strand}'
+        seq = get_reverse_complement(row.seq) if (row.strand == '-') else row.seq
+        reads.append((read_id, seq))
+    return reads
+
+
+
+class StringGraph():
+
+    def __init__(self, df:pd.DataFrame, overlap_length:int=10):
+
+        reads = get_reads(df)
+
+
+# Representing every read of length n as a collection of n - k + 1 overlapping k-tuples (continuous short strings of fixed length k)
+class KmerGraph():
     def _get_sequences(reads_df):
 
         # Include reads in the orientation they were mapped to the contig. If the read's mate is mapped in one orientation, even if the read
