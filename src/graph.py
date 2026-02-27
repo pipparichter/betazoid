@@ -182,8 +182,6 @@ def get_contained_alignments(align_df:pd.DataFrame):
 
 # I think the best way to do this is just going to be an mmseqs pairwise alignment between all recruited reads, and then reading in the file. 
 
-FILTERS = dict()
-FILTERS['overlap_length']
 
 
 # Idea is to use knowledge from the seed contig to enforce direction, which should limit the complexity of the problem. 
