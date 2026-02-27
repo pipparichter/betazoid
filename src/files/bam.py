@@ -30,7 +30,8 @@ FLAGS['supplementary'] = 2048 # Flag is set when a portion of the read aligns to
 
 
 class BamFile():
-    fields = ['read_id', 'flag', 'ref_id', 'position', 'mapping_quality', 'cigar', 'mate_ref_id', 'mate_position', 'template_length', 'seq', 'quality_string', 'tags']
+    # SAM file will always have 11 columns, but can have a variable number of tags after the first 11 (which I ignore here).
+    fields = ['read_id', 'flag', 'ref_id', 'position', 'mapping_quality', 'cigar', 'mate_ref_id', 'mate_position', 'template_length', 'seq', 'quality_string']
 
     def __init__(self, path:str=None):
         self.path = path  

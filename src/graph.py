@@ -90,6 +90,10 @@ def get_reads(df):
 
 MMSEQS_FIELDS = ['query', 'target', 'alnlen', 'qcov', 'qstart', 'qend', 'tstart', 'tend', 'fident', 'qseq', 'tseq', 'qaln', 'taln']
 
+MMSEQS_ALIGN_PARAMS = dict()
+MMSEQS_PREFILTER_PARAMS = dict()
+
+
 def align_reads(reads):
     tmp_dir = os.path.join(TMP_DIR, 'tmp')
     fasta_file = FASTAFile()
