@@ -29,6 +29,9 @@ FLAGS['duplicate'] = 1024 # PCR duplicates, safe to exclude.
 FLAGS['supplementary'] = 2048 # Flag is set when a portion of the read aligns to a different location (split read). Primary alignments will not have this set. This can occur if reads span structural variants (SVs) like deletions, inversions, or translocations
 
 
+
+
+
 class BamFile():
     # SAM file will always have 11 columns, but can have a variable number of tags after the first 11 (which I ignore here).
     fields = ['read_id', 'flag', 'ref_id', 'position', 'mapping_quality', 'cigar', 'mate_ref_id', 'mate_position', 'template_length', 'seq', 'quality_string']
@@ -56,26 +59,24 @@ class BamFile():
             cmd += ['-F', str(exclude_flags)]
         cmd += [self.path]
         return cmd 
-
-    @staticmethod
-    def _get_strands(df):
-        '''Note that if both mate pairs are mapped, but the orientation is the same, the strand will be set to None 
-        to flag the ambiguity in the mapping.'''
-        conditions = [(df.unmapped & df.mate_reverse_strand) | (~df.unmapped & (~df.reverse_strand))]
-        conditions += [(df.unmapped & ~df.mate_reverse_strand) | (~df.unmapped & (df.reverse_strand))]
-        return np.select(conditions, ['+', '-'], default=None)
     
+    @staticmethod
+    def _get_pair_orientation(df:pd.DataFrame):
+        strands = np.select([(~df.unmapped & df.reverse_strand), (~df.unmapped & ~df.reverse_strand)], ['R', 'F'], default='X')
+        mate_strands = np.select([(~df.mate_unmapped & df.mate_reverse_strand), (~df.mate_unmapped & ~df.mate_reverse_strand)], ['R', 'F'], default='X')
+        df['orientation'] = np.char.add(strands, mate_strands)
+        return df 
+        
     def to_df(self, include_flags:int=None, exclude_flags:int=None):
 
         cmd = self._get_samtools_cmd('view', include_flags=include_flags, exclude_flags=exclude_flags)
-
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
         df = pd.read_csv(io.StringIO(result.stdout), sep='\t', header=None, names=BamFile.fields, usecols=range(len(BamFile.fields)))
         # Parse the flags and add stored metadata to the DataFrame. 
         for col, data in BamFile._parse_flags(df.flag).items():
             df[col] = data 
-        df['strand'] = BamFile._get_strands(df) # Assign a strand to each read.
+        df['orientation'] = BamFile._get_pair_orientation(df) # Assign orientation to each pair.
 
         return df 
  
@@ -101,3 +102,11 @@ class BamFile():
 #     cmd += ['-o', fastq_path_paired]
 #     subprocess.run(cmd,check=True)
 #     return fastq_path_paired, fastq_path_orphan
+
+    # def _get_strands(df):
+    #     '''Note that if both mate pairs are mapped, but the orientation is the same, the strand will be set to None 
+    #     to flag the ambiguity in the mapping.'''
+    #     conditions = [(df.unmapped & df.mate_reverse_strand) | (~df.unmapped & (~df.reverse_strand))]
+    #     conditions += [(df.unmapped & ~df.mate_reverse_strand) | (~df.unmapped & (df.reverse_strand))]
+    #     return np.select(conditions, ['+', '-'], default=None)
+    
