@@ -57,7 +57,7 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
         if (n == 0): # n is the number of sequences written to the FASTA file. 
             print(f'recruit_reads: No additional unmapped reads recruited. Exiting at iteration {i}.')
             break 
-        print(f'recruit_reads: Recruited {n} additional reads at iteration {i}.')
+        print(f'recruit_reads: Recruiting using {n} unmapped reads at iteration {i}.')
         output_path_i = os.path.join(output_dir, f'{job_name}.reads.{i}.bam')
         run_bbmap(ref_path_i, output_path=output_path_i, reads_path_1=reads_path_1, reads_path_2=reads_path_2)
         output_paths.append(output_path_i)
@@ -76,20 +76,44 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
 # https://academic.oup.com/bioinformatics/article/21/suppl_2/ii79/227189?login=true
 # https://www.pnas.org/doi/10.1073/pnas.171285098
 
+TMP_DIR = '/home/philippar/tmp'
 
 def get_reads(df):
-
     df = df[~df.strand.isnull()].copy() # Remove all cases where the strand is unknown, which occurs if both reads are mapped in the same direction. 
     # Include reads in the orientation they were mapped to the contig. If the read's mate is mapped in one orientation, even if the read
     # itself is unmapped, enforce the opposite orientation
-    reads = list()
+    ids, seqs = list(), list()
     for row in df.itertuples():
-        read_id = f'{row.read_id} {row.read_number} {row.strand}'
-        seq = get_reverse_complement(row.seq) if (row.strand == '-') else row.seq
-        reads.append((read_id, seq))
-    return reads
+        ids += [f'{row.read_id} {row.read_number} {row.strand}']
+        seqs += [get_reverse_complement(row.seq) if (row.strand == '-') else row.seq]
+    return ids, seqs
+
+MMSEQS_FIELDS = ['query', 'target', 'alnlen', 'qcov', 'qstart', 'qend', 'tstart', 'tend', 'fident', 'qseq', 'tseq', 'qaln', 'taln']
+
+def align_reads(reads):
+    tmp_dir = os.path.join(TMP_DIR, 'tmp')
+    fasta_file = FASTAFile()
+    fasta_file.ids, fasta_file.seqs = reads
+    fasta_file.write(os.path.join(TMP_DIR, 'reads.fasta'))
+
+    database_path = os.path.join(TMP_DIR, 'readsDB')
+    prefilter_database_path = os.path.join(TMP_DIR, 'readsDB_prefilter')
+    aligned_database_path = os.path.join(TMP_DIR, 'readsDB_aligned')
+    alignment_path = os.path.join(TMP_DIR, 'alignments.tsv')
+
+    prefilter_options = ['--k', '7', '--kmers-per-seq', '300', '--min-ungapped-score', '15']
+    fields = ','.join(MMSEQS_FIELDS)
+    align_options = ['-a', '--mask', 'no', '--alignment-mode', '2', '--max-seqs', '10', '--min-seq-id', '95', '--format-output', f'"{fields}"']
+
+    subprocess.run(['mmseqs', 'createdb', os.path.join(TMP_DIR, 'reads.fasta'), database_path, '--dbtype', '2'], check=True)
+    subprocess.run(['mmseqs', 'prefilter', database_path, database_path, prefilter_database_path, tmp_dir] + prefilter_options, check=True)
+    subprocess.run(['mmseqs', 'align', database_path, database_path, prefilter_database_path, aligned_database_path, tmp_dir] + align_options, check=True)
+    subprocess.run(['mmseqs', 'convertalis', database_path, database_path, aligned_database_path, tmp_dir, alignment_path] + align_options, check=True)
 
 
+
+
+# I think the best way to do this is just going to be an mmseqs pairwise alignment between all recruited reads, and then reading in the file. 
 
 class StringGraph():
 

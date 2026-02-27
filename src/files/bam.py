@@ -70,7 +70,7 @@ class BamFile():
 
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
-        df = pd.read_csv(io.StringIO(result.stdout), sep='\t', header=None, names=BamFile.fields)
+        df = pd.read_csv(io.StringIO(result.stdout), sep='\t', header=None, names=BamFile.fields, usecols=range(len(BamFile.fields)))
         # Parse the flags and add stored metadata to the DataFrame. 
         for col, data in BamFile._parse_flags(df.flag).items():
             df[col] = data 
