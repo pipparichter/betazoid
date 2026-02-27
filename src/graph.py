@@ -5,6 +5,7 @@ import subprocess
 from src.files import FASTAFile, BamFile, FLAGS
 import io
 from Bio.Seq import Seq
+import networkx as nx 
 
 get_reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
 
@@ -14,7 +15,7 @@ BBMAP_PARAMS['idfilter'] = 0.97 # Filters the entire read for identity after ali
 BBMAP_PARAMS['ambiguous'] = 'all'
 BBMAP_PARAMS['minratio'] = 0.5
 BBMAP_PARAMS['editfilter'] = 5 # Consider reads with fewer than 5 indels or mismatches as mapped.
-BBMAP_PARAMS['local'] = 't' # Allow local alignments. 
+BBMAP_PARAMS['local'] = 'f' # Allow local alignments. Actually, don't.
 # BBMAP_PARAMS['unmapped'] = 't' # Include reads that fail the thresholds. 
 BBMAP_PARAMS['pigz'] = 't'
 BBMAP_PARAMS['unpigz'] = 't'
@@ -37,13 +38,13 @@ def run_bbmap(ref_path, reads_path_1:str=None, reads_path_2:str=None, output_pat
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
 
 
-def check_reads(df):
-    '''Confirm that the recruited reads match what I am assuming about them.'''
-    checks = dict()
-    checks['one_mate_mapped'] = np.all((~df.mate_unmapped) | (~df.unmapped))
-    checks['read_strand_assigned'] = np.any(df.strand.isnull())
-    for name, value in checks.items():
-        assert value, f'check_reads: Failed check {name}.'
+# def check_reads(df):
+#     '''Confirm that the recruited reads match what I am assuming about them.'''
+#     checks = dict()
+#     checks['one_mate_mapped'] = np.all((~df.mate_unmapped) | (~df.unmapped))
+#     checks['read_strand_assigned'] = np.any(df.strand.isnull())
+#     for name, value in checks.items():
+#         assert value, f'check_reads: Failed check {name}.'
 
 
 def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=None, reads_path_2:str=None):
@@ -88,11 +89,25 @@ def get_reads(df):
         seqs += [get_reverse_complement(row.seq) if (row.strand == '-') else row.seq]
     return ids, seqs
 
-MMSEQS_FIELDS = ['query', 'target', 'alnlen', 'qcov', 'qstart', 'qend', 'tstart', 'tend', 'fident', 'qseq', 'tseq', 'qaln', 'taln']
+MMSEQS_FIELDS = ['query', 'target', 'alnlen', 'qcov', 'tcov', 'qstart', 'qend', 'tstart', 'tend', 'fident', 'qseq', 'tseq', 'qaln', 'taln', 'qlen', 'tlen']
+MMSEQS_FIELDS = '"' + ','.join(MMSEQS_FIELDS) + '"'
 
 MMSEQS_ALIGN_PARAMS = dict()
-MMSEQS_PREFILTER_PARAMS = dict()
+MMSEQS_ALIGN_PARAMS['alignment-mode'] = 2 # Semi-global alignment. 
+MMSEQS_ALIGN_PARAMS['min-seq-id'] = 0.95
+MMSEQS_ALIGN_PARAMS['min-aln-len'] = 20 
+# MMSEQS_ALIGN_PARAMS['a'] = '' # Add backtrace string (convert to alignments with mmseqs convertalis module). Basically allows you to request qaln and taln later with convertalis.
+MMSEQS_ALIGN_PARAMS = ['-a', '--forward-strand-only'] + list(np.ravel([[f'--{param}', str(value)] for param, value in MMSEQS_ALIGN_PARAMS.items()]))
 
+MMSEQS_PREFILTER_PARAMS = dict()
+MMSEQS_PREFILTER_PARAMS['k'] = 7 # K-mer size to use for prefiltering 
+MMSEQS_PREFILTER_PARAMS['max-seqs'] = 20 # Controls the maximum number of prefiltering results per query sequence.
+MMSEQS_PREFILTER_PARAMS['mask'] = 0 # Turn off low-complexity matching.
+MMSEQS_PREFILTER_PARAMS['min-ungapped-score'] = 15 # The min. score of an ungapped seed alignment that must exist before a candidate pair is passed to the full alignment stage; roughly equivalent to required number of exactly-matching base pairs.
+MMSEQS_PREFILTER_PARAMS = list(np.ravel([[f'--{param}', str(value)] for param, value in MMSEQS_PREFILTER_PARAMS.items()]))
+
+
+# https://academic.oup.com/bioinformatics/article/32/9/1323/1744460
 
 def align_reads(reads):
     tmp_dir = os.path.join(TMP_DIR, 'tmp')
@@ -105,16 +120,33 @@ def align_reads(reads):
     aligned_database_path = os.path.join(TMP_DIR, 'readsDB_aligned')
     alignment_path = os.path.join(TMP_DIR, 'alignments.tsv')
 
-    prefilter_options = ['--k', '7', '--kmers-per-seq', '300', '--min-ungapped-score', '15']
-    fields = ','.join(MMSEQS_FIELDS)
-    align_options = ['-a', '--mask', 'no', '--alignment-mode', '2', '--max-seqs', '10', '--min-seq-id', '95', '--format-output', f'"{fields}"']
-
     subprocess.run(['mmseqs', 'createdb', os.path.join(TMP_DIR, 'reads.fasta'), database_path, '--dbtype', '2'], check=True)
-    subprocess.run(['mmseqs', 'prefilter', database_path, database_path, prefilter_database_path, tmp_dir] + prefilter_options, check=True)
-    subprocess.run(['mmseqs', 'align', database_path, database_path, prefilter_database_path, aligned_database_path, tmp_dir] + align_options, check=True)
-    subprocess.run(['mmseqs', 'convertalis', database_path, database_path, aligned_database_path, tmp_dir, alignment_path] + align_options, check=True)
+    subprocess.run(['mmseqs', 'prefilter', database_path, database_path, prefilter_database_path, tmp_dir] + MMSEQS_ALIGN_PARAMS, check=True)
+    subprocess.run(['mmseqs', 'align', database_path, database_path, prefilter_database_path, aligned_database_path, tmp_dir] + MMSEQS_PREFILTER_PARAMS, check=True)
+    subprocess.run(['mmseqs', 'convertalis', database_path, database_path, aligned_database_path, tmp_dir, alignment_path] + ['--format-output', MMSEQS_FIELDS], check=True)
 
 
+# Based on paper, I think we want to collapse contained reads into a single node, while still preserving the pair information. 
+
+def get_contained_alignments(align_df:pd.DataFrame):
+    lengths = dict()
+    contained = list()
+    for row in align_df.itertuples():
+        if (row.tcov == 1) or (row.qcov == 1):
+            contained.append((row.target, row.query))
+            lengths[row.target], lengths[row.query] = row.tlen, row.qlen 
+    graph = nx.Graph()
+    graph.add_edges_from(contained)
+    groups = list(nx.connected_components(graph))
+
+
+    
+
+
+
+# Now need to think about how to contruct a graph from the alignments. When traversing the graph, want to build a sequence which does not include the overlap regions,
+# so will accrue like (read_a_not_aligned) + (aligned_region) + (read_a_not_aligned)
+# Probably want to store a tuple like (qaln/taln, )
 
 
 # I think the best way to do this is just going to be an mmseqs pairwise alignment between all recruited reads, and then reading in the file. 
