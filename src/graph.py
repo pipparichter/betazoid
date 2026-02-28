@@ -65,10 +65,10 @@ def run_bbmap(ref_path, reads_path_1:str=None, reads_path_2:str=None, output_pat
 #         assert value, f'check_reads: Failed check {name}.'
 
 
-def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=None, reads_path_2:str=None):
+def recruit_reads(ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=None, reads_path_2:str=None):
     output_paths = list()
     # For first iterations, don't care about non-primary alignments. 
-    output_paths.append(os.path.join(output_dir, f'{job_name}.reads.{0}.bam'))
+    output_paths.append(os.path.join(output_dir, f'reads.{0}.bam'))
     run_bbmap(ref_path, reads_path_1=reads_path_1, reads_path_2=reads_path_2, output_path=output_paths[0])
 
     for i in range(1, n_iters):
@@ -77,7 +77,7 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
             print(f'recruit_reads: No additional unmapped reads recruited. Exiting at iteration {i}.')
             break 
         print(f'recruit_reads: Recruiting using {n} unmapped reads at iteration {i}.')
-        output_path_i = os.path.join(output_dir, f'{job_name}.reads.{i}.bam')
+        output_path_i = os.path.join(output_dir, f'reads.{i}.bam')
         run_bbmap(ref_path_i, output_path=output_path_i, reads_path_1=reads_path_1, reads_path_2=reads_path_2)
         output_paths.append(output_path_i)
 
