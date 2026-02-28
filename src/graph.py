@@ -7,144 +7,22 @@ import io
 from Bio.Seq import Seq
 import networkx as nx 
 
-# https://academic.oup.com/bioinformatics/article/21/suppl_2/ii79/227189?login=true
-# https://www.pnas.org/doi/10.1073/pnas.171285098
-
-
-get_reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
-
-# When writing ambiguous alignments, each alignment becomes a separate SAM record
-BBMAP_PARAMS = dict()
-BBMAP_PARAMS['minid'] = 0.95 # Minimum percent identity for an alignment to be considered mapped, applied only to the aligned portion of the read. 
-BBMAP_PARAMS['idfilter'] = 0.97 # Filters the entire read for identity after alignment, applied over the entire read.
-BBMAP_PARAMS['ambiguous'] = 'all' # Ambiguous means all alignments are equally good. 
-# BBMAP_PARAMS['mappedonly'] = 't' # If true, treats out like outm.
-BBMAP_PARAMS['minratio'] = 0.5
-BBMAP_PARAMS['editfilter'] = 5 # Consider reads with fewer than 5 indels or mismatches as mapped.
-BBMAP_PARAMS['local'] = 'f' # Allow local alignments. Actually, don't.
-# BBMAP_PARAMS['unmapped'] = 't' # Include reads that fail the thresholds. 
-BBMAP_PARAMS['pigz'] = 't'
-BBMAP_PARAMS['unpigz'] = 't'
-BBMAP_PARAMS['threads'] = 64
-BBMAP_PARAMS['k'] = 13 # K-mer size (13 is default for short-read data)
-BBMAP_PARAMS['minhits'] = 1 # Minimum number of K-mer matches to consider a read (1 is default)
-BBMAP_PARAMS['nodisk'] = 't' # No temporary files written.
-BBMAP_PARAMS['notags'] = 't' # Turn off optional tags.
-# BBMAP_PARAMS['secondary'] = 'f' # Keep secondary alignments, which are worse than the primary alignments. 
-# BBMAP_PARAMS['pairlenient'] = 't' # Allow unmapped mates to remain. This is not a real option.  
-# outm: Write only mapped reads to this file. Includes unmapped paired reads with a mapped mate.
-
-def run_bbmap(ref_path, reads_path_1:str=None, reads_path_2:str=None, output_path:str=None):
-    ''''''
-    if os.path.exists(output_path):
-        print(f'run_bbmap: Using existing output stored at {output_path}')
-        return 
-    
-    cmd = ['bbmap.sh']
-    cmd += [f'in1={reads_path_1}']
-    cmd += [f'in2={reads_path_2}']
-    cmd += [f'ref={ref_path}']
-    cmd += [f'out=stdout.sam']
-    # cmd += [f'out={output_path}']
-
-    cmd += [f'{param}={str(value)}' for param, value in BBMAP_PARAMS.items()]
-    cmd = ' '.join(cmd)
-
-    print('run_bbmap:', cmd)
-    # Getting different results if I don't do this. 
-    cmd += f'| shrinksam | sambam > {output_path}'
-
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
-
-
-# def check_reads(df):
-#     '''Confirm that the recruited reads match what I am assuming about them.'''
-#     checks = dict()
-#     checks['one_mate_mapped'] = np.all((~df.mate_unmapped) | (~df.unmapped))
-#     checks['read_strand_assigned'] = np.any(df.strand.isnull())
-#     for name, value in checks.items():
-#         assert value, f'check_reads: Failed check {name}.'
-
-
-def recruit_reads(ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=None, reads_path_2:str=None):
-    output_paths = list()
-    # For first iterations, don't care about non-primary alignments. 
-    output_paths.append(os.path.join(output_dir, f'reads.{0}.bam'))
-    run_bbmap(ref_path, reads_path_1=reads_path_1, reads_path_2=reads_path_2, output_path=output_paths[0])
-
-    for i in range(1, n_iters):
-        ref_path_i, n = BamFile.from_file(output_paths[-1]).to_fasta(include_flags=FLAGS['unmapped'] + FLAGS['read_paired'], exclude_flags=FLAGS['mate_unmapped'])
-        if (n == 0): # n is the number of sequences written to the FASTA file. 
-            print(f'recruit_reads: No additional unmapped reads recruited. Exiting at iteration {i}.')
-            break 
-        print(f'recruit_reads: Recruiting using {n} unmapped reads at iteration {i}.')
-        output_path_i = os.path.join(output_dir, f'reads.{i}.bam')
-        run_bbmap(ref_path_i, output_path=output_path_i, reads_path_1=reads_path_1, reads_path_2=reads_path_2)
-        output_paths.append(output_path_i)
-
-    # Need to store the iteration to properly length-normalize reads for the graph.
-    df = pd.concat([BamFile.from_file(path).to_df().assign(iteration=i) for i, path in enumerate(output_paths)])
-    # df = df.drop_duplicates(['read_id', 'strand', 'read_number'])
-    return df
-
-
-
-# A handful of possible scenarios... 
-# (1) Both mates map in opposite orientations: Include both reads in the specified orientation. 
-# (2) One mate maps in one orientation: Include the mapped read and the unmapped read in the opposite orientation. 
-# (3) One mate maps in both orientations: Include both members of the pair in both orientations. 
-# (4) Both mates map in the same orientation: Include both members of the pair in both orientations. 
-def get_reads(df, output_path:str=None):
-    '''Takes the DataFrame read from a BAM file as input. Outputs a list of sequences to use for building the graph, with IDS encoding the direction and read ID.'''
-    # Include reads in the orientation they were mapped to the contig. If the read's mate is mapped in one orientation, even if the read
-    # itself is unmapped, enforce the opposite orientation
-    id_map = {read_id:i for i, read_id in enumerate(np.sort(df.read_id.unique()))} # Map read IDS to integers to make life easier.
-    ids, seqs = list(), list()
-    for row in df.itertuples():
-        
-        n = row.read_number
-        i = id_map[row.read_id]
-        assert row.orientation != 'XX', 'get_reads: There should not be any reads where both members of the pair are unmapped.'
-        if (row.iteration > 0): # We don't know anything about the true orientation relative to the seed contig for reads recruited after the first iteration. 
-            ids += [f'{i}.{n}.F', f'{i}.{n}.R']
-            seqs += [row.seq, get_reverse_complement(row.seq)]
-
-        elif (row.orientation == 'RF') or (row.orientation == 'FR'):
-            ids += [f'{i}.{n}.{row.orientation[0]}']
-            seqs += [get_reverse_complement(row.seq) if (row.orientation[0] == 'R') else row.seq]
-        elif (row.orientation == 'RR') or (row.orientation == 'FF'):
-            ids += [f'{i}.{n}.F', f'{i}.{n}.R']
-            seqs += [row.seq, get_reverse_complement(row.seq)]
-        elif (row.orientation == 'XF') or (row.orientation == 'XR'):
-            orientation = 'F' if (row.orientation[-1] == 'R') else 'F'
-            ids += [f'{i}.{n}.{orientation}']
-            seqs += [row.seq, get_reverse_complement(row.seq)]
-        else:
-            continue
-    print(f'get_reads: Writing {len(ids)} sequences to {output_path} from {len(id_map)} pairs.')
-    fasta_file = FASTAFile()
-    fasta_file.ids, fasta_file.seqs, fasta_file.descriptions = ids, seqs, []
-    fasta_file.write(output_path)
-    return output_path
-
 
 MMSEQS_FIELDS = ['query', 'target', 'alnlen', 'qcov', 'tcov', 'qstart', 'qend', 'tstart', 'tend', 'fident', 'qseq', 'tseq', 'qaln', 'taln', 'qlen', 'tlen']
 MMSEQS_FIELDS = '"' + ','.join(MMSEQS_FIELDS) + '"'
 
 MMSEQS_ALIGN_PARAMS = dict()
-MMSEQS_ALIGN_PARAMS['alignment-mode'] = 2 # Semi-global alignment. 
-MMSEQS_ALIGN_PARAMS['min-seq-id'] = 0.95
-MMSEQS_ALIGN_PARAMS['min-aln-len'] = 20 
-# MMSEQS_ALIGN_PARAMS['a'] = '' # Add backtrace string (convert to alignments with mmseqs convertalis module). Basically allows you to request qaln and taln later with convertalis.
-# MMSEQS_ALIGN_PARAMS = ['-a', '--forward-strand-only'] + [f'--{param} {value}' for param, value in MMSEQS_ALIGN_PARAMS.items()]
-MMSEQS_ALIGN_PARAMS = ['-a'] + [f'--{param} {value}' for param, value in MMSEQS_ALIGN_PARAMS.items()]
+MMSEQS_ALIGN_PARAMS['--alignment-mode'] = 2 # Semi-global alignment. 
+MMSEQS_ALIGN_PARAMS['--min-seq-id'] = 0.95
+MMSEQS_ALIGN_PARAMS['--min-aln-len'] = 20 
+MMSEQS_ALIGN_PARAMS = ['-a'] + [f'{param} {value}' for param, value in MMSEQS_ALIGN_PARAMS.items()]
 
 MMSEQS_PREFILTER_PARAMS = dict()
-# MMSEQS_PREFILTER_PARAMS['k'] = 7 # K-mer size to use for prefiltering 
-MMSEQS_PREFILTER_PARAMS['max-seqs'] = 20 # Controls the maximum number of prefiltering results per query sequence.
-MMSEQS_PREFILTER_PARAMS['mask'] = 0 # Turn off low-complexity matching.
-MMSEQS_PREFILTER_PARAMS['min-ungapped-score'] = 15 # The min. score of an ungapped seed alignment that must exist before a candidate pair is passed to the full alignment stage; roughly equivalent to required number of exactly-matching base pairs.
-MMSEQS_PREFILTER_PARAMS = [f'--{param} {value}'  for param, value in MMSEQS_PREFILTER_PARAMS.items()] + ['-k 7']
+MMSEQS_PREFILTER_PARAMS['-k'] = 7 # K-mer size to use for prefiltering 
+MMSEQS_PREFILTER_PARAMS['--max-seqs'] = 20 # Controls the maximum number of prefiltering results per query sequence.
+MMSEQS_PREFILTER_PARAMS['--mask'] = 0 # Turn off low-complexity matching.
+MMSEQS_PREFILTER_PARAMS['--min-ungapped-score'] = 15 # The min. score of an ungapped seed alignment that must exist before a candidate pair is passed to the full alignment stage; roughly equivalent to required number of exactly-matching base pairs.
+MMSEQS_PREFILTER_PARAMS = [f'{param} {value}'  for param, value in MMSEQS_PREFILTER_PARAMS.items()]
 
 MMSEQS_CONVERTALIS_PARAMS = ['--format-output', MMSEQS_FIELDS, '--search-type 3']
 
@@ -161,10 +39,13 @@ def align_reads(path, output_dir:str=None):
     aligned_database_path = os.path.join(output_dir, 'readsDB_aligned')
     alignment_path = os.path.join(output_dir, 'alignments.tsv')
 
-    subprocess.run(' '.join(['mmseqs', 'createdb', path, database_path, '--dbtype', '2']), shell=True, check=True)
-    subprocess.run(' '.join(['mmseqs', 'prefilter', database_path, database_path, prefilter_database_path] + MMSEQS_PREFILTER_PARAMS), shell=True, check=True)
-    subprocess.run(' '.join(['mmseqs', 'align', database_path, database_path, prefilter_database_path, aligned_database_path] + MMSEQS_ALIGN_PARAMS), shell=True, check=True)
-    subprocess.run(' '.join(['mmseqs', 'convertalis', database_path, database_path, aligned_database_path, alignment_path] + MMSEQS_CONVERTALIS_PARAMS), shell=True, check=True)
+    cmds = [' '.join(['mmseqs', 'createdb', path, database_path, '--dbtype', '2'])]
+    cmds += [' '.join(['mmseqs', 'prefilter', database_path, database_path, prefilter_database_path] + MMSEQS_PREFILTER_PARAMS)]
+    cmds += [' '.join(['mmseqs', 'align', database_path, database_path, prefilter_database_path, aligned_database_path] + MMSEQS_ALIGN_PARAMS)]
+    cmds += [' '.join(['mmseqs', 'convertalis', database_path, database_path, aligned_database_path, alignment_path] + MMSEQS_CONVERTALIS_PARAMS)]
+    for cmd in cmds:
+        print(cmd)
+        subprocess.run(cmd, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 # Based on paper, I think we want to collapse contained reads into a single node, while still preserving the pair information. 

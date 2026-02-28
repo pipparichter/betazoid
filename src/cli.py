@@ -1,9 +1,11 @@
 import argparse
 import src.graph as graph 
+from src.align import align 
+from src.recruit import recruit
 import os 
 import pandas as pd 
 
-NAME = 'another_test'
+NAME = 'test'
 OUTPUT_DIR = f'/home/philippar/out/{NAME}'
 if not os.path.exists(OUTPUT_DIR):
     os.mkdir(OUTPUT_DIR)
@@ -13,9 +15,8 @@ READS_PATH_1 = '/groups/banfield/sequences/2014/16ft_4/raw.d/16ft_4_CZBZ.6237.3.
 READS_PATH_2 = '/groups/banfield/sequences/2014/16ft_4/raw.d/16ft_4_CZBZ.6237.3.40316_trim_clean.PE.2.fastq.gz'
 
 
-
-def recruit_reads():
-    # recruit_reads(ref_path:str, n_iters:int=5, reads_path_1:str=None, reads_path_2:str=None)
+def recruit():
+    # recruit(ref_path:str, n_iters:int=5, reads_path_1:str=None, reads_path_2:str=None)
     parser = argparse.ArgumentParser()
     parser.add_argument('--ref-path', type=str)
     parser.add_argument('--output-dir', type=str, default=OUTPUT_DIR)
@@ -25,16 +26,16 @@ def recruit_reads():
     args = parser.parse_args()
 
     output_path = os.path.join(OUTPUT_DIR, 'reads.csv')
-    df = graph.recruit_reads(args.ref_path, n_iters=args.n_iters, reads_path_1=args.reads_path_1, reads_path_2=args.reads_path_2, output_dir=args.output_dir)
+    df = graph.recruit(args.ref_path, n_iters=args.n_iters, reads_path_1=args.reads_path_1, reads_path_2=args.reads_path_2, output_dir=args.output_dir)
     df.to_csv(output_path)
-    print('recruit_reads: Recruited read information written to', output_path)
+    print('recruit: Recruited read information written to', output_path)
 
 
-def align_reads():
+def align():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--reads-csv-path', type=str, default=os.path.join(OUTPUT_DIR, 'reads.csv')) # This is the output of recruit reads. 
+    parser.add_argument('--reads-path', type=str, default=os.path.join(OUTPUT_DIR, 'reads.fasta')) # This is the output of recruit reads. 
     args = parser.parse_args()
 
     df = pd.read_csv(args.reads_csv_path)
     graph.get_reads(df, output_path=os.path.join(OUTPUT_DIR, 'reads.fasta'))
-    graph.align_reads(os.path.join(OUTPUT_DIR, 'reads.fasta'), output_dir=OUTPUT_DIR)
+    align(os.path.join(OUTPUT_DIR, 'reads.fasta'), output_dir=OUTPUT_DIR)
