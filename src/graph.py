@@ -135,8 +135,8 @@ MMSEQS_ALIGN_PARAMS['alignment-mode'] = 2 # Semi-global alignment.
 MMSEQS_ALIGN_PARAMS['min-seq-id'] = 0.95
 MMSEQS_ALIGN_PARAMS['min-aln-len'] = 20 
 # MMSEQS_ALIGN_PARAMS['a'] = '' # Add backtrace string (convert to alignments with mmseqs convertalis module). Basically allows you to request qaln and taln later with convertalis.
-# MMSEQS_ALIGN_PARAMS = ['-a'] + list(np.ravel([[f'--{param}', str(value)] for param, value in MMSEQS_ALIGN_PARAMS.items()]))
-MMSEQS_ALIGN_PARAMS = ['-a', '--forward-strand-only'] + [f'--{param} {value}' for param, value in MMSEQS_ALIGN_PARAMS.items()]
+# MMSEQS_ALIGN_PARAMS = ['-a', '--forward-strand-only'] + [f'--{param} {value}' for param, value in MMSEQS_ALIGN_PARAMS.items()]
+MMSEQS_ALIGN_PARAMS = ['-a'] + [f'--{param} {value}' for param, value in MMSEQS_ALIGN_PARAMS.items()]
 
 MMSEQS_PREFILTER_PARAMS = dict()
 # MMSEQS_PREFILTER_PARAMS['k'] = 7 # K-mer size to use for prefiltering 
