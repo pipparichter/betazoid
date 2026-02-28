@@ -145,6 +145,8 @@ MMSEQS_PREFILTER_PARAMS['mask'] = 0 # Turn off low-complexity matching.
 MMSEQS_PREFILTER_PARAMS['min-ungapped-score'] = 15 # The min. score of an ungapped seed alignment that must exist before a candidate pair is passed to the full alignment stage; roughly equivalent to required number of exactly-matching base pairs.
 MMSEQS_PREFILTER_PARAMS = [f'--{param} {value}'  for param, value in MMSEQS_PREFILTER_PARAMS.items()] + ['-k 7']
 
+MMSEQS_CONVERTALIS_PARAMS = ['--format-output', MMSEQS_FIELDS, '--search-type 3']
+
 
 # https://academic.oup.com/bioinformatics/article/32/9/1323/1744460
 
@@ -161,7 +163,7 @@ def align_reads(path, output_dir:str=None):
     subprocess.run(' '.join(['mmseqs', 'createdb', path, database_path, '--dbtype', '2']), shell=True, check=True)
     subprocess.run(' '.join(['mmseqs', 'prefilter', database_path, database_path, prefilter_database_path] + MMSEQS_PREFILTER_PARAMS), shell=True, check=True)
     subprocess.run(' '.join(['mmseqs', 'align', database_path, database_path, prefilter_database_path, aligned_database_path] + MMSEQS_ALIGN_PARAMS), shell=True, check=True)
-    subprocess.run(' '.join(['mmseqs', 'convertalis', database_path, database_path, aligned_database_path, alignment_path] + ['--format-output', MMSEQS_FIELDS]), shell=True, check=True)
+    subprocess.run(' '.join(['mmseqs', 'convertalis', database_path, database_path, aligned_database_path, alignment_path] + MMSEQS_CONVERTALIS_PARAMS), shell=True, check=True)
 
 
 # Based on paper, I think we want to collapse contained reads into a single node, while still preserving the pair information. 
