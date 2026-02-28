@@ -27,7 +27,7 @@ BBMAP_PARAMS['pigz'] = 't'
 BBMAP_PARAMS['unpigz'] = 't'
 BBMAP_PARAMS['threads'] = 64
 BBMAP_PARAMS['k'] = 13 # K-mer size (13 is default for short-read data)
-BBMAP_PARAMS['minhits'] = 2 # Minimum number of K-mer matches to consider a read (2 is default)
+BBMAP_PARAMS['minhits'] = 1 # Minimum number of K-mer matches to consider a read (1 is default)
 BBMAP_PARAMS['nodisk'] = 't' # No temporary files written.
 BBMAP_PARAMS['notags'] = 't' # Turn off optional tags.
 # BBMAP_PARAMS['secondary'] = 'f' # Keep secondary alignments, which are worse than the primary alignments. 
@@ -185,15 +185,14 @@ def get_contained_alignments(align_df:pd.DataFrame):
 
 
 # Idea is to use knowledge from the seed contig to enforce direction, which should limit the complexity of the problem. 
-def get_edge(row):
+def add_edge(row, graph:nx.Graph):
     '''Assumes all edges overlap properly, and that all alignments are in the same direction. '''
-    edges = list()
-    if row.qstart > 1: # If alignment is at the right extremus of the query, then direction is query to subject. 
-        edges.append((f'{row.target}.L', f'{row.query}.L'))
-        edges.append((f'{row.query}.R', f'{row.target}.R'))
-    else: # If alignment is at the right extremus of the target, then direction is query to subject. 
-        edges.append((f'{row.target}.L', f'{row.query}.L'))
-        edges.append((f'{row.query}.R', f'{row.target}.R'))
+    if row.qstart > 1: # If alignment is at the right extremus of the query, then direction is query to target. 
+        graph.add_edge(f'{row.target}.L', f'{row.query}.L')
+        graph.add_edge((f'{row.query}.R', f'{row.target}.R'))
+    else: # If alignment is at the left extremus of the target, then direction is target to query. 
+        graph.add_edge(f'{row.query}.L', f'{row.target}.L')
+        graph.add_edge((f'{row.target}.R', f'{row.query}.R'))
     return edges
 
 

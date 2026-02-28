@@ -64,7 +64,7 @@ class BamFile():
     def _get_pair_orientation(df:pd.DataFrame):
         strands = np.select([(~df.unmapped & df.reverse_strand), (~df.unmapped & ~df.reverse_strand)], ['R', 'F'], default='X')
         mate_strands = np.select([(~df.mate_unmapped & df.mate_reverse_strand), (~df.mate_unmapped & ~df.mate_reverse_strand)], ['R', 'F'], default='X')
-        df['orientation'] = np.char.add(strands, mate_strands)
+        df['orientation'] = [f'{a}{b}' for a, b in zip(strands, mate_strands)]
         return df 
         
     def to_df(self, include_flags:int=None, exclude_flags:int=None):
