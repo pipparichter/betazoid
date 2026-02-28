@@ -26,7 +26,7 @@ def recruit():
     args = parser.parse_args()
 
     output_path = os.path.join(OUTPUT_DIR, 'reads.csv')
-    df = src.recruit(args.ref_path, n_iters=args.n_iters, reads_path_1=args.reads_path_1, reads_path_2=args.reads_path_2, output_dir=args.output_dir)
+    df = src.recruit.recruit(args.ref_path, n_iters=args.n_iters, reads_path_1=args.reads_path_1, reads_path_2=args.reads_path_2, output_dir=args.output_dir)
     df.to_csv(output_path)
     print('recruit: Recruited read information written to', output_path)
 
