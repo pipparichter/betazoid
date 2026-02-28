@@ -82,8 +82,7 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
         output_paths.append(output_path_i)
 
     df = pd.concat([BamFile.from_file(path).to_df() for path in output_paths])
-    df['read_number'] = np.select([(df.read_paired & ~df.read_1), (df.read_paired & df.read_2), (~df.read_paired)], ['1', '2', ''], default='')
-    df = df.drop_duplicates(['read_id', 'strand', 'read_number'])
+    # df = df.drop_duplicates(['read_id', 'strand', 'read_number'])
     return df
 
 

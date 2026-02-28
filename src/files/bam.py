@@ -76,7 +76,7 @@ class BamFile():
         for col, data in BamFile._parse_flags(df.flag).items():
             df[col] = data 
         df['orientation'] = BamFile._get_pair_orientation(df) # Assign orientation to each pair.
-
+        df['read_number'] = np.select([(df.read_paired & ~df.read_1), (df.read_paired & df.read_2), (~df.read_paired)], [1, 2, 0], default=0)
         return df 
  
 
