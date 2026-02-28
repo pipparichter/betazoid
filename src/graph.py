@@ -122,7 +122,7 @@ def get_reads(df, output_path:str=None):
             continue
     print(f'get_reads: Writing {len(ids)} sequences to {output_path} from {len(id_map)} pairs.')
     fasta_file = FASTAFile()
-    fasta_file.ids, fasta_file.seqs = ids, seqs
+    fasta_file.ids, fasta_file.seqs, fasta_file.descriptions = ids, seqs, []
     fasta_file.write(output_path)
     return output_path
 

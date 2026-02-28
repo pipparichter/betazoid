@@ -34,8 +34,9 @@ class FASTAFile():
 
     def __init__(self):
         '''Initialize a FASTAFile object.'''
-
-        return
+        self.seqs = list()
+        self.descriptions = list()
+        self.ids = list()
 
 
     def __len__(self):
