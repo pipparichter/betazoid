@@ -36,6 +36,10 @@ BBMAP_PARAMS['notags'] = 't' # Turn off optional tags.
 
 def run_bbmap(ref_path, reads_path_1:str=None, reads_path_2:str=None, output_path:str=None):
     ''''''
+    if os.path.exists(output_path):
+        print(f'run_bbmap: Using existing output stored at {output_path}')
+        return 
+    
     cmd = ['bbmap.sh']
     cmd += [f'in1={reads_path_1}']
     cmd += [f'in2={reads_path_2}']
@@ -74,8 +78,7 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
             break 
         print(f'recruit_reads: Recruiting using {n} unmapped reads at iteration {i}.')
         output_path_i = os.path.join(output_dir, f'{job_name}.reads.{i}.bam')
-        if not os.path.exists(output_path_i):
-            run_bbmap(ref_path_i, output_path=output_path_i, reads_path_1=reads_path_1, reads_path_2=reads_path_2)
+        run_bbmap(ref_path_i, output_path=output_path_i, reads_path_1=reads_path_1, reads_path_2=reads_path_2)
         output_paths.append(output_path_i)
 
     df = pd.concat([BamFile.from_file(path).to_df() for path in output_paths])
@@ -102,14 +105,14 @@ def get_reads(df, path:str=os.path.join(TMP_DIR, 'reads.fasta')):
         i = id_map[row.read_id]
         assert row.orientation != 'XX', 'get_reads: There should not be any reads where both members of the pair are unmapped.'
         if (row.orientation == 'RF') or (row.orientation == 'FR'):
-            ids += [f'{id_map[row.read_id]}.{row.orientation[0]}']
+            ids += [f'{i}.{n}.{row.orientation[0]}']
             seqs += [get_reverse_complement(row.seq) if (row.orientation[0] == 'R') else row.seq]
         elif (row.orientation == 'RR') or (row.orientation == 'FF'):
-            ids += [f'{id_map[row.read_id]}.F', f'{id_map[row.read_id]}.R']
+            ids += [f'{i}.{n}.F', f'{i}.{n}.R']
             seqs += [row.seq, get_reverse_complement(row.seq)]
         elif (row.orientation == 'XF') or (row.orientation == 'XR'):
             orientation = 'F' if (row.orientation[-1] == 'R') else 'F'
-            ids += [f'{id_map[row.read_id]}.{orientation}']
+            ids += [f'{i}.{n}.{orientation}']
             seqs += [row.seq, get_reverse_complement(row.seq)]
         else:
             continue
