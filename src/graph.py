@@ -159,7 +159,7 @@ def align_reads(path, output_dir:str=None):
     alignment_path = os.path.join(output_dir, 'alignments.tsv')
 
     subprocess.run(' '.join(['mmseqs', 'createdb', path, database_path, '--dbtype', '2']), shell=True, check=True)
-    subprocess.run(' '.join(['mmseqs', 'prefilter', database_path, database_path, prefilter_database_path, tmp_dir] + MMSEQS_PREFILTER_PARAMS), shell=True, check=True)
+    subprocess.run(' '.join(['mmseqs', 'prefilter', database_path, database_path, prefilter_database_path] + MMSEQS_PREFILTER_PARAMS), shell=True, check=True)
     subprocess.run(' '.join(['mmseqs', 'align', database_path, database_path, prefilter_database_path, aligned_database_path, tmp_dir] + MMSEQS_ALIGN_PARAMS), shell=True, check=True)
     subprocess.run(' '.join(['mmseqs', 'convertalis', database_path, database_path, aligned_database_path, tmp_dir, alignment_path] + ['--format-output', MMSEQS_FIELDS]), shell=True, check=True)
 
