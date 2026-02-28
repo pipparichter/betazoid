@@ -18,7 +18,7 @@ BBMAP_PARAMS = dict()
 BBMAP_PARAMS['minid'] = 0.95 # Minimum percent identity for an alignment to be considered mapped, applied only to the aligned portion of the read. 
 BBMAP_PARAMS['idfilter'] = 0.97 # Filters the entire read for identity after alignment, applied over the entire read.
 BBMAP_PARAMS['ambiguous'] = 'all' # Ambiguous means all alignments are equally good. 
-BBMAP_PARAMS['mappedonly'] = 't' # If true, treats out like outm.
+# BBMAP_PARAMS['mappedonly'] = 't' # If true, treats out like outm.
 BBMAP_PARAMS['minratio'] = 0.5
 BBMAP_PARAMS['editfilter'] = 5 # Consider reads with fewer than 5 indels or mismatches as mapped.
 BBMAP_PARAMS['local'] = 'f' # Allow local alignments. Actually, don't.
@@ -44,14 +44,15 @@ def run_bbmap(ref_path, reads_path_1:str=None, reads_path_2:str=None, output_pat
     cmd += [f'in1={reads_path_1}']
     cmd += [f'in2={reads_path_2}']
     cmd += [f'ref={ref_path}']
-    cmd += [f'out={output_path}']
+    cmd += [f'out=stdout.sam']
+    # cmd += [f'out={output_path}']
 
     cmd += [f'{param}={str(value)}' for param, value in BBMAP_PARAMS.items()]
     cmd = ' '.join(cmd)
 
-    # cmd += f'| shrinksam | sambam > {output_path}'
     print('run_bbmap:', cmd)
-    # Need to pipe output into samtools view so as to not store basically the entire library (which is the typical behavior)?
+    # Getting different results if I don't do this. 
+    cmd += f'| shrinksam | sambam > {output_path}'
 
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
 

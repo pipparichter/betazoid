@@ -3,7 +3,7 @@ import src.graph as graph
 import os 
 import pandas as pd 
 
-NAME = 'test'
+NAME = 'another_test'
 OUTPUT_DIR = f'/home/philippar/out/{NAME}'
 if not os.path.exists(OUTPUT_DIR):
     os.mkdir(OUTPUT_DIR)
