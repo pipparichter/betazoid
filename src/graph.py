@@ -136,14 +136,14 @@ MMSEQS_ALIGN_PARAMS['min-seq-id'] = 0.95
 MMSEQS_ALIGN_PARAMS['min-aln-len'] = 20 
 # MMSEQS_ALIGN_PARAMS['a'] = '' # Add backtrace string (convert to alignments with mmseqs convertalis module). Basically allows you to request qaln and taln later with convertalis.
 # MMSEQS_ALIGN_PARAMS = ['-a'] + list(np.ravel([[f'--{param}', str(value)] for param, value in MMSEQS_ALIGN_PARAMS.items()]))
-MMSEQS_ALIGN_PARAMS = ['-a', '--forward-strand-only'] + list(np.ravel([[f'--{param}', str(value)] for param, value in MMSEQS_ALIGN_PARAMS.items()]))
+MMSEQS_ALIGN_PARAMS = ['-a', '--forward-strand-only'] + [f'--{param} {value}' for param, value in MMSEQS_ALIGN_PARAMS.items()]
 
 MMSEQS_PREFILTER_PARAMS = dict()
-MMSEQS_PREFILTER_PARAMS['k'] = 7 # K-mer size to use for prefiltering 
+# MMSEQS_PREFILTER_PARAMS['k'] = 7 # K-mer size to use for prefiltering 
 MMSEQS_PREFILTER_PARAMS['max-seqs'] = 20 # Controls the maximum number of prefiltering results per query sequence.
 MMSEQS_PREFILTER_PARAMS['mask'] = 0 # Turn off low-complexity matching.
 MMSEQS_PREFILTER_PARAMS['min-ungapped-score'] = 15 # The min. score of an ungapped seed alignment that must exist before a candidate pair is passed to the full alignment stage; roughly equivalent to required number of exactly-matching base pairs.
-MMSEQS_PREFILTER_PARAMS = list(np.ravel([[f'--{param}', str(value)] for param, value in MMSEQS_PREFILTER_PARAMS.items()]))
+MMSEQS_PREFILTER_PARAMS = [f'--{param} {value}'  for param, value in MMSEQS_PREFILTER_PARAMS.items()] + ['-k 7']
 
 
 # https://academic.oup.com/bioinformatics/article/32/9/1323/1744460
