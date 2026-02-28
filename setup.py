@@ -9,7 +9,7 @@ setuptools.setup(
     author='Philippa Richter',
     author_email='prichter@berkeley.edu',
     packages=['src', 'src.files'],
-    entry_points={'console_scripts': ['recruit_reads=src.cli:recruit_reads', 'align_reads=src.cli:recruit_reads']})
+    entry_points={'console_scripts': ['recruit_reads=src.cli:recruit_reads', 'align_reads=src.cli:align_reads']})
 
 # TODO: What exactly is an entry point?
 # https://python-packaging.readthedocs.io/en/latest/command-line-scripts.html
