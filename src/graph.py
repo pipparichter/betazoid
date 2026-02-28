@@ -150,8 +150,8 @@ MMSEQS_PREFILTER_PARAMS = [f'--{param} {value}'  for param, value in MMSEQS_PREF
 
 def align_reads(path, output_dir:str=None):
 
-    tmp_dir = os.path.join(output_dir, 'tmp')
-    os.makedirs(tmp_dir, exist_ok=True)
+    # tmp_dir = os.path.join(output_dir, 'tmp')
+    # os.makedirs(tmp_dir, exist_ok=True)
 
     database_path = os.path.join(output_dir, 'readsDB')
     prefilter_database_path = os.path.join(output_dir, 'readsDB_prefilter')
@@ -160,8 +160,8 @@ def align_reads(path, output_dir:str=None):
 
     subprocess.run(' '.join(['mmseqs', 'createdb', path, database_path, '--dbtype', '2']), shell=True, check=True)
     subprocess.run(' '.join(['mmseqs', 'prefilter', database_path, database_path, prefilter_database_path] + MMSEQS_PREFILTER_PARAMS), shell=True, check=True)
-    subprocess.run(' '.join(['mmseqs', 'align', database_path, database_path, prefilter_database_path, aligned_database_path, tmp_dir] + MMSEQS_ALIGN_PARAMS), shell=True, check=True)
-    subprocess.run(' '.join(['mmseqs', 'convertalis', database_path, database_path, aligned_database_path, tmp_dir, alignment_path] + ['--format-output', MMSEQS_FIELDS]), shell=True, check=True)
+    subprocess.run(' '.join(['mmseqs', 'align', database_path, database_path, prefilter_database_path, aligned_database_path] + MMSEQS_ALIGN_PARAMS), shell=True, check=True)
+    subprocess.run(' '.join(['mmseqs', 'convertalis', database_path, database_path, aligned_database_path, alignment_path] + ['--format-output', MMSEQS_FIELDS]), shell=True, check=True)
 
 
 # Based on paper, I think we want to collapse contained reads into a single node, while still preserving the pair information. 
