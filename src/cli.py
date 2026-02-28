@@ -30,7 +30,6 @@ def recruit_reads():
     print('recruit_reads: Recruited read information written to', output_path)
 
 
-
 def align_reads():
     parser = argparse.ArgumentParser()
     parser.add_argument('--reads-csv-path', type=str, default=os.path.join(OUTPUT_DIR, 'reads.csv')) # This is the output of recruit reads. 
