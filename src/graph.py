@@ -81,12 +81,12 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
         run_bbmap(ref_path_i, output_path=output_path_i, reads_path_1=reads_path_1, reads_path_2=reads_path_2)
         output_paths.append(output_path_i)
 
-    df = pd.concat([BamFile.from_file(path).to_df() for path in output_paths])
+    # Need to store the iteration to properly length-normalize reads for the graph.
+    df = pd.concat([BamFile.from_file(path).to_df().assign(iteration=i) for i, path in enumerate(output_paths)])
     # df = df.drop_duplicates(['read_id', 'strand', 'read_number'])
     return df
 
 
-TMP_DIR = '/home/philippar/tmp'
 
 # A handful of possible scenarios... 
 # (1) Both mates map in opposite orientations: Include both reads in the specified orientation. 
@@ -100,10 +100,15 @@ def get_reads(df, path:str=os.path.join(TMP_DIR, 'reads.fasta')):
     id_map = {read_id:i for i, read_id in enumerate(np.sort(df.read_id.unique()))} # Map read IDS to integers to make life easier.
     ids, seqs = list(), list()
     for row in df.itertuples():
+        
         n = row.read_number
         i = id_map[row.read_id]
         assert row.orientation != 'XX', 'get_reads: There should not be any reads where both members of the pair are unmapped.'
-        if (row.orientation == 'RF') or (row.orientation == 'FR'):
+        if (row.iteration > 0): # We don't know anything about the true orientation relative to the seed contig for reads recruited after the first iteration. 
+            ids += [f'{i}.{n}.F', f'{i}.{n}.R']
+            seqs += [row.seq, get_reverse_complement(row.seq)]
+
+        elif (row.orientation == 'RF') or (row.orientation == 'FR'):
             ids += [f'{i}.{n}.{row.orientation[0]}']
             seqs += [get_reverse_complement(row.seq) if (row.orientation[0] == 'R') else row.seq]
         elif (row.orientation == 'RR') or (row.orientation == 'FF'):
@@ -143,13 +148,13 @@ MMSEQS_PREFILTER_PARAMS = list(np.ravel([[f'--{param}', str(value)] for param, v
 
 # https://academic.oup.com/bioinformatics/article/32/9/1323/1744460
 
-def align_reads(path):
+def align_reads(path, output_dir:str=None):
 
-    tmp_dir = os.path.join(TMP_DIR, 'tmp')
-    database_path = os.path.join(TMP_DIR, 'readsDB')
-    prefilter_database_path = os.path.join(TMP_DIR, 'readsDB_prefilter')
-    aligned_database_path = os.path.join(TMP_DIR, 'readsDB_aligned')
-    alignment_path = os.path.join(TMP_DIR, 'alignments.tsv')
+    tmp_dir = os.path.join(output_dir, 'tmp')
+    database_path = os.path.join(output_dir, 'readsDB')
+    prefilter_database_path = os.path.join(output_dir, 'readsDB_prefilter')
+    aligned_database_path = os.path.join(output_dir, 'readsDB_aligned')
+    alignment_path = os.path.join(output_dir, 'alignments.tsv')
 
     subprocess.run(['mmseqs', 'createdb', path, database_path, '--dbtype', '2'], check=True)
     subprocess.run(['mmseqs', 'prefilter', database_path, database_path, prefilter_database_path, tmp_dir] + MMSEQS_ALIGN_PARAMS, check=True)
@@ -158,7 +163,7 @@ def align_reads(path):
 
 
 # Based on paper, I think we want to collapse contained reads into a single node, while still preserving the pair information. 
-
+# I might try just not doing this at first to see what things look like. 
 def get_contained_alignments(align_df:pd.DataFrame):
     lengths = dict()
     contained = list()
