@@ -93,7 +93,7 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
 # (2) One mate maps in one orientation: Include the mapped read and the unmapped read in the opposite orientation. 
 # (3) One mate maps in both orientations: Include both members of the pair in both orientations. 
 # (4) Both mates map in the same orientation: Include both members of the pair in both orientations. 
-def get_reads(df, path:str=os.path.join(TMP_DIR, 'reads.fasta')):
+def get_reads(df, output_path:str=None):
     '''Takes the DataFrame read from a BAM file as input. Outputs a list of sequences to use for building the graph, with IDS encoding the direction and read ID.'''
     # Include reads in the orientation they were mapped to the contig. If the read's mate is mapped in one orientation, even if the read
     # itself is unmapped, enforce the opposite orientation
@@ -120,11 +120,11 @@ def get_reads(df, path:str=os.path.join(TMP_DIR, 'reads.fasta')):
             seqs += [row.seq, get_reverse_complement(row.seq)]
         else:
             continue
-    print(f'get_reads: Writing {len(ids)} sequences to {path} from {len(id_map)} pairs.')
+    print(f'get_reads: Writing {len(ids)} sequences to {output_path} from {len(id_map)} pairs.')
     fasta_file = FASTAFile()
     fasta_file.ids, fasta_file.seqs = ids, seqs
-    fasta_file.write(path)
-    return path
+    fasta_file.write(output_path)
+    return output_path
 
 
 MMSEQS_FIELDS = ['query', 'target', 'alnlen', 'qcov', 'tcov', 'qstart', 'qend', 'tstart', 'tend', 'fident', 'qseq', 'tseq', 'qaln', 'taln', 'qlen', 'tlen']
