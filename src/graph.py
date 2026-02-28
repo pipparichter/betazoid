@@ -74,7 +74,8 @@ def recruit_reads(job_name, ref_path:str, n_iters:int=5, output_dir:str='.', rea
             break 
         print(f'recruit_reads: Recruiting using {n} unmapped reads at iteration {i}.')
         output_path_i = os.path.join(output_dir, f'{job_name}.reads.{i}.bam')
-        run_bbmap(ref_path_i, output_path=output_path_i, reads_path_1=reads_path_1, reads_path_2=reads_path_2)
+        if not os.path.exists(output_path_i):
+            run_bbmap(ref_path_i, output_path=output_path_i, reads_path_1=reads_path_1, reads_path_2=reads_path_2)
         output_paths.append(output_path_i)
 
     df = pd.concat([BamFile.from_file(path).to_df() for path in output_paths])
@@ -97,6 +98,8 @@ def get_reads(df, path:str=os.path.join(TMP_DIR, 'reads.fasta')):
     id_map = {read_id:i for i, read_id in enumerate(np.sort(df.read_id.unique()))} # Map read IDS to integers to make life easier.
     ids, seqs = list(), list()
     for row in df.itertuples():
+        n = row.read_number
+        i = id_map[row.read_id]
         assert row.orientation != 'XX', 'get_reads: There should not be any reads where both members of the pair are unmapped.'
         if (row.orientation == 'RF') or (row.orientation == 'FR'):
             ids += [f'{id_map[row.read_id]}.{row.orientation[0]}']
@@ -188,12 +191,13 @@ def get_contained_alignments(align_df:pd.DataFrame):
 def add_edge(row, graph:nx.Graph):
     '''Assumes all edges overlap properly, and that all alignments are in the same direction. '''
     if row.qstart > 1: # If alignment is at the right extremus of the query, then direction is query to target. 
-        graph.add_edge(f'{row.target}.L', f'{row.query}.L')
-        graph.add_edge((f'{row.query}.R', f'{row.target}.R'))
+        metadata = {'start_a':row.qstart, 'start_b':row.tstart, 'end_a':row.qend, 'end_b':row.tend}
+        graph.add_edge(f'{row.target}', f'{row.query}', **metadata) # I might only need to add the beginning to beginning edge because of enforced directionality. 
+        # graph.add_edge(f'{row.query}.R', f'{row.target}.R', **metadata)
     else: # If alignment is at the left extremus of the target, then direction is target to query. 
-        graph.add_edge(f'{row.query}.L', f'{row.target}.L')
-        graph.add_edge((f'{row.target}.R', f'{row.query}.R'))
-    return edges
+        metadata = {'start_a':row.tstart, 'start_b':row.qstart, 'end_a':row.tend, 'end_b':row.qend}
+        graph.add_edge(f'{row.query}', f'{row.target}', **metadata)
+        # graph.add_edge(f'{row.target}.R', f'{row.query}.R', **metadata)
 
 
 
