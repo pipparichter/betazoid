@@ -116,10 +116,10 @@ class FASTAFile():
 
         return df
 
-    def write(self, path:str, mode:str='w', add_description:bool=False) -> NoReturn:
+    def write(self, path:str, mode:str='w') -> NoReturn:
         f = open(path, mode=mode)
         records = []
-        for id_, seq, description in zip(self.ids, self.seqs, self.descriptions):
+        for id_, seq, description in zip(self.ids, self.seqs):
             record = SeqRecord(Seq(seq), id=str(id_), description='' if (not add_description) else description)
             records.append(record)
         SeqIO.write(records, f, 'fasta')
