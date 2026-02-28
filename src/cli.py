@@ -1,7 +1,7 @@
 import argparse
-import src.graph as graph 
-from src.align import align 
-from src.recruit import recruit
+# import src.graph as graph 
+import src.align 
+import src.recruit 
 import os 
 import pandas as pd 
 
@@ -26,7 +26,7 @@ def recruit():
     args = parser.parse_args()
 
     output_path = os.path.join(OUTPUT_DIR, 'reads.csv')
-    df = recruit(args.ref_path, n_iters=args.n_iters, reads_path_1=args.reads_path_1, reads_path_2=args.reads_path_2, output_dir=args.output_dir)
+    df = src.recruit(args.ref_path, n_iters=args.n_iters, reads_path_1=args.reads_path_1, reads_path_2=args.reads_path_2, output_dir=args.output_dir)
     df.to_csv(output_path)
     print('recruit: Recruited read information written to', output_path)
 
@@ -36,4 +36,4 @@ def align():
     parser.add_argument('--reads-path', type=str, default=os.path.join(OUTPUT_DIR, 'reads.fasta')) # This is the output of recruit reads. 
     args = parser.parse_args()
 
-    align(os.path.join(OUTPUT_DIR, 'reads.fasta'), output_dir=OUTPUT_DIR)
+    src.align.align(os.path.join(OUTPUT_DIR, 'reads.fasta'), output_dir=OUTPUT_DIR)
