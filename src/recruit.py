@@ -92,6 +92,19 @@ def _write_reads_to_fasta(df, output_path:str=None):
     fasta_file.ids, fasta_file.seqs, fasta_file.descriptions = ids, seqs, []
     fasta_file.write(output_path)
 
+def _clean_read_ids(df:pd.DataFrame):
+    '''With some sequencing libraries, reads are of the form HISEQ08:237:C17PBACXX:3:2304:2266:195851 1:N:0:, where the 
+    1:N:0, encodes {read_number}:{passed_filter}:{is_control_cluster}:. Because this encodes the pair information, it needs to be removed
+    in order to allow proper matching by ID.'''
+    read_id = df.read_id.iloc[0]
+    df = df.read_id.str.replace(r'\s[12]:N:0:', '', regex=True)
+    read_id_cleaned = df.read_id.iloc[0]
+    # Print to make sure this step is correct. 
+    print(f'_clean_read_ids: Read IDs of the form {read_id} replaced by {read_id_cleaned}.')
+    return df 
+
+# HISEQ08:237:C17PBACXX:3:2304:2266:195851 1:N:0:
+
 
 def recruit(ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=None, reads_path_2:str=None):
     output_paths = list()
@@ -111,6 +124,7 @@ def recruit(ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=No
 
     # Need to store the iteration to properly length-normalize reads for the graph.
     df = pd.concat([BamFile.from_file(path).to_df(include_flags=FLAGS['read_paired']).assign(iteration=i) for i, path in enumerate(output_paths)])
+    df = _clean_read_ids(df)
     _write_reads_to_fasta(df, output_path=os.path.join(output_dir, 'reads.fasta'))
     return df
 

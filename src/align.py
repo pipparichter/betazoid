@@ -44,14 +44,14 @@ def align(path, output_dir:str=None):
         subprocess.run(cmd, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-id_pattern = f'(\d+.\d).(R|F|X)'
+id_pattern = r'(\d+.\d).(R|F|X)'
 get_id_no_orientation = lambda id_ : re.match(id_pattern, id_).group(1) # Just removing the orientation from the ID.
 
 def align_load(path:str):
     '''Load the output of MMseqs alignment.'''
     df = pd.read_csv(path, header=None, names=MMSEQS_FIELDS, sep='\t')
     # IDs are of the form {read_pair_integer}.{read_number}.{orientation}
-    df['query_id_no_orientation'] = df.query.apply(get_id_no_orientation)
+    df['query_id_no_orientation'] = df['query'].apply(get_id_no_orientation)
     df['target_id_no_orientation'] = df.target.apply(get_id_no_orientation)
     return df
 
@@ -60,7 +60,7 @@ def align_load(path:str):
 
 def align_filter(path, max_distance_from_extrema:int=3):
 
-    df = align_load(df)
+    df = align_load(path)
     print(f'align_filter: Loaded {len(df)} alignments from {path}')
     # Based on how the mapped reads were extracted from the BAM file (both forward and reverse versions were extracted independently
     # depending on how they mapped to the scaffold), we only want alignments where both are on the forward strand.
@@ -68,10 +68,12 @@ def align_filter(path, max_distance_from_extrema:int=3):
     filters = dict()
     filters['opposite_strand_alignments'] = (df.qstart > df.qend) | (df.tstart > df.tend)
     filters['self_alignments'] = df.target_id_no_orientation == df.query_id_no_orientation
-    filters['non_extreme_endpoints'] = ((df.qstart <= max_distance_from_extrema) + ((df.tlen - df.tend) <= max_distance_from_extrema) + ((df.qlen - df.qend) <= max_distance_from_extrema) + (df.start <= max_distance_from_extrema)) < 2
-
+    filters['non_extreme_endpoints'] = (df.qstart <= max_distance_from_extrema).astype(int) + ((df.tlen - df.tend) <= max_distance_from_extrema).astype(int)
+    filters['non_extreme_endpoints'] = filters['non_extreme_endpoints'] + ((df.qlen - df.qend) <= max_distance_from_extrema).astype(int) + (df.tstart <= max_distance_from_extrema).astype(int)
+    filters['non_extreme_endpoints'] = filters['non_extreme_endpoints'] < 2
+    
     masks = np.ones(len(df))
-    for name, mask in filter.items():
+    for name, mask in filters.items():
         print(f'align_filter: {mask.sum()} alignments failing filter {name}')
         masks = masks & ~mask 
     

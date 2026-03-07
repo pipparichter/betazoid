@@ -6,10 +6,16 @@ from src.files import FASTAFile, BamFile, FLAGS
 import io
 from Bio.Seq import Seq
 import networkx as nx 
+import re
 
+# What are the conditions I want to use for collapsing a node?
+# Key thing is that the path it produces must be identical to the path produced through another node.
+# In other words, if there is a bubble, collapse the bubble if all generated paths are identical. 
 
 # I actually might not want to collapse all contained alignments in case one of the pairs leads off on a different path (i.e. to a different strain). 
 # Instead, want to collapse sub-paths that have the same start and end point. 
+
+# Maybe best thing to do is to collapse the contained alignments, but keep a record of the paired mates.
 
 # Based on paper, I think we want to collapse contained reads into a single node, while still preserving the pair information. 
 # I might try just not doing this at first to see what things look like. 
@@ -44,8 +50,6 @@ def get_contained_alignments(align_df:pd.DataFrame):
 
 
 
-
-
 class StringGraph():
 
     # Idea is to use knowledge from the seed contig to enforce direction, which should limit the complexity of the problem. 
@@ -60,10 +64,32 @@ class StringGraph():
             self.G.add_edge(f'{row.query}', f'{row.target}', **metadata)
             # graph.add_edge(f'{row.target}.R', f'{row.query}.R', **metadata)
 
-    def __init__(self, align_df:pd.DataFrame, overlap_length:int=10):
+    def _get_pair_map(self, reads):
+
+        get_mate_pattern = lambda read : read.split('.')[0] + '.' + ('1' if (read.split('.')[1] == '0') else '0') + '.(R|F)'
+        return {read:[r for r in reads if re.match(get_mate_pattern(read), r)] for read in reads}
+
+    def _get_start_nodes(self):
+        return [n for n, d in self.G.in_degree() if d == 0]
+    
+    def _get_end_nodes(self):
+        return [n for n, d in self.G.out_degree() if d == 0]
+
+    # Want to initialize with both the alignments and the complete reads list. 
+    def __init__(self, reads:list, align_df:pd.DataFrame, overlap_length:int=10):
+
         self.G = nx.DiGraph()
+
+        # self.G.add_node(row.)
         for row in align_df.itertuples():
             self._add_edge(row)
+
+        print(f'StringGraph.__init__: Initialized a graph with {len(self.G.edges)} edges.')
+        print(f'StringGraph.__init__: {len(self._get_start_nodes())} start nodes.')
+        print(f'StringGraph.__init__: {len(self._get_end_nodes())} end nodes.')
+
+    # def traverse(self):
+
 
 
 
