@@ -25,7 +25,6 @@ MMSEQS_PREFILTER_PARAMS = [f'{param} {value}'  for param, value in MMSEQS_PREFIL
 MMSEQS_CONVERTALIS_PARAMS = ['--format-output', '"' + ','.join(MMSEQS_FIELDS) + '"', '--search-type 3']
 
 
-
 def align(path, output_dir:str=None):
 
     # tmp_dir = os.path.join(output_dir, 'tmp')
@@ -78,5 +77,6 @@ def align_filter(path, max_distance_from_extrema:int=3):
     
     df = df[masks].copy()
     print(f'align_filter: {len(df)} alignments remaining after filtering')
+    return df 
 
 

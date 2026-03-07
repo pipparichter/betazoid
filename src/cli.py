@@ -14,6 +14,7 @@ if not os.path.exists(OUTPUT_DIR):
 READS_PATH_1 = '/groups/banfield/sequences/2014/16ft_4/raw.d/16ft_4_CZBZ.6237.3.40316_trim_clean.PE.1.fastq.gz'
 READS_PATH_2 = '/groups/banfield/sequences/2014/16ft_4/raw.d/16ft_4_CZBZ.6237.3.40316_trim_clean.PE.2.fastq.gz'
 
+# recruit --ref-path scaffold_1334.fasta
 
 def recruit():
     # recruit(ref_path:str, n_iters:int=5, reads_path_1:str=None, reads_path_2:str=None)
@@ -36,4 +37,4 @@ def align():
     parser.add_argument('--reads-path', type=str, default=os.path.join(OUTPUT_DIR, 'reads.fasta')) # This is the output of recruit reads. 
     args = parser.parse_args()
 
-    src.align.align(os.path.join(OUTPUT_DIR, 'reads.fasta'), output_dir=OUTPUT_DIR)
+    src.align.align(args.reads_path, output_dir=OUTPUT_DIR)
