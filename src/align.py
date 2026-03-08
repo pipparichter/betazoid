@@ -58,9 +58,9 @@ def align_load(path:str):
 
 # is_contained_alignment = lambda df : 
 
-def align_filter(path, max_distance_from_extrema:int=3):
+def align_filter(path, max_distance_from_extrema:int=1):
 
-    df = align_load(path)
+    df = align_load(path).sort_values(['fident', 'alnlen'])
     print(f'align_filter: Loaded {len(df)} alignments from {path}')
     # Based on how the mapped reads were extracted from the BAM file (both forward and reverse versions were extracted independently
     # depending on how they mapped to the scaffold), we only want alignments where both are on the forward strand.
@@ -71,6 +71,7 @@ def align_filter(path, max_distance_from_extrema:int=3):
     filters['non_extreme_endpoints'] = (df.qstart <= max_distance_from_extrema).astype(int) + ((df.tlen - df.tend) <= max_distance_from_extrema).astype(int)
     filters['non_extreme_endpoints'] = filters['non_extreme_endpoints'] + ((df.qlen - df.qend) <= max_distance_from_extrema).astype(int) + (df.tstart <= max_distance_from_extrema).astype(int)
     filters['non_extreme_endpoints'] = filters['non_extreme_endpoints'] < 2
+    filters['duplicate_alignment_pairs'] = df.duplicated(['query', 'target'], keep='first')
     
     masks = np.ones(len(df))
     for name, mask in filters.items():
@@ -78,6 +79,7 @@ def align_filter(path, max_distance_from_extrema:int=3):
         masks = masks & ~mask 
     
     df = df[masks].copy()
+    
     print(f'align_filter: {len(df)} alignments remaining after filtering')
     return df 
 
