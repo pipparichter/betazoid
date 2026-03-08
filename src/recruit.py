@@ -107,7 +107,7 @@ def _clean_read_ids(df:pd.DataFrame):
     1:N:0, encodes {read_number}:{passed_filter}:{is_control_cluster}:. Because this encodes the pair information, it needs to be removed
     in order to allow proper matching by ID.'''
     read_id = df.read_id.iloc[0]
-    df = df.read_id.str.replace(r'\s[12]:N:0:', '', regex=True)
+    df['read_id'] = df.read_id.str.replace(r'\s[12]:N:0:', '', regex=True)
     read_id_cleaned = df.read_id.iloc[0]
     # Print to make sure this step is correct. 
     print(f'_clean_read_ids: Read IDs of the form {read_id} replaced by {read_id_cleaned}.')
@@ -135,7 +135,6 @@ def recruit(ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=No
 
     # Need to store the iteration to properly length-normalize reads for the graph.
     df = pd.concat([BamFile.from_file(path).to_df(include_flags=FLAGS['read_paired']).assign(iteration=i) for i, path in enumerate(output_paths)])
-    print(df.columns)
     df = _clean_read_ids(df) # Make sure to do this before writing to FASTA so the IDs get assigned correctly.
     id_map = _write_reads_to_fasta(df, output_path=os.path.join(output_dir, 'reads.fasta'))
     df['read_id_original'] = df.read_id 
