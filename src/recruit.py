@@ -5,6 +5,7 @@ import subprocess
 from src.files import FASTAFile, BamFile, FLAGS
 import io
 from Bio.Seq import Seq
+import json 
 
 # https://academic.oup.com/bioinformatics/article/21/suppl_2/ii79/227189?login=true
 # https://www.pnas.org/doi/10.1073/pnas.171285098
@@ -63,7 +64,9 @@ def _write_reads_to_fasta(df, output_path:str=None):
     '''Takes the DataFrame read from a BAM file as input. Outputs a list of sequences to use for building the graph, with IDS encoding the direction and read ID.'''
     # Include reads in the orientation they were mapped to the contig. If the read's mate is mapped in one orientation, even if the read
     # itself is unmapped, enforce the opposite orientation
-    id_map = {read_id:i for i, read_id in enumerate(np.sort(df.read_id.unique()))} # Map paired read IDS to integers to make life easier.
+
+    # Integer IDs should correspond to the read IDs stored in reads.csv output in alphabetical order.  
+    id_map = {str(read_id):i for i, read_id in enumerate(np.sort(df.read_id.unique()))} # Map paired read IDS to integers to make life easier.
     ids, seqs = list(), list()
     for row in df.itertuples():
         
@@ -92,6 +95,13 @@ def _write_reads_to_fasta(df, output_path:str=None):
     fasta_file.ids, fasta_file.seqs, fasta_file.descriptions = ids, seqs, []
     fasta_file.write(output_path)
 
+    # Should save the read ID map just to be safe.
+    output_dir = os.path.dirname(output_path)
+    with open(os.path.join(output_dir, 'read_id_map.json'), 'w') as f:
+        json.dump(id_map, f)
+    return id_map  
+
+
 def _clean_read_ids(df:pd.DataFrame):
     '''With some sequencing libraries, reads are of the form HISEQ08:237:C17PBACXX:3:2304:2266:195851 1:N:0:, where the 
     1:N:0, encodes {read_number}:{passed_filter}:{is_control_cluster}:. Because this encodes the pair information, it needs to be removed
@@ -113,6 +123,7 @@ def recruit(ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=No
     _run_bbmap(ref_path, reads_path_1=reads_path_1, reads_path_2=reads_path_2, output_path=output_paths[0])
 
     for i in range(1, n_iters):
+        # Convert the BAM output file from the previous iteration to a FASTA file for use as a reference.
         ref_path_i, n = BamFile.from_file(output_paths[-1]).to_fasta(include_flags=FLAGS['unmapped'] + FLAGS['read_paired'], exclude_flags=FLAGS['mate_unmapped'])
         if (n == 0): # n is the number of sequences written to the FASTA file. 
             print(f'recruit: No additional unmapped reads recruited. Exiting at iteration {i}.')
@@ -124,7 +135,10 @@ def recruit(ref_path:str, n_iters:int=5, output_dir:str='.', reads_path_1:str=No
 
     # Need to store the iteration to properly length-normalize reads for the graph.
     df = pd.concat([BamFile.from_file(path).to_df(include_flags=FLAGS['read_paired']).assign(iteration=i) for i, path in enumerate(output_paths)])
-    df = _clean_read_ids(df)
-    _write_reads_to_fasta(df, output_path=os.path.join(output_dir, 'reads.fasta'))
+    print(df.columns)
+    df = _clean_read_ids(df) # Make sure to do this before writing to FASTA so the IDs get assigned correctly.
+    id_map = _write_reads_to_fasta(df, output_path=os.path.join(output_dir, 'reads.fasta'))
+    df['read_id_original'] = df.read_id 
+    df['read_id'] = df.read_id_original.map(id_map) # Add the integer IDs in place of the original IDs. 
     return df
 

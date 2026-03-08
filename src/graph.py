@@ -17,7 +17,7 @@ import re
 
 # Maybe best thing to do is to collapse the contained alignments, but keep a record of the paired mates.
 
-# Based on paper, I think we want to collapse contained reads into a single node, while still preserving the pair information. 
+# Based on paper, I think we want to collapse contained read_ids into a single node, while still preserving the pair information. 
 # I might try just not doing this at first to see what things look like. 
 def get_contained_alignments(align_df:pd.DataFrame):
     lengths = dict()
@@ -39,16 +39,19 @@ def get_contained_alignments(align_df:pd.DataFrame):
 
 
 # Now need to think about how to contruct a graph from the alignments. When traversing the graph, want to build a sequence which does not include the overlap regions,
-# so will accrue like (read_a_not_aligned) + (aligned_region) + (read_a_not_aligned)
+# so will accrue like (read_id_a_not_aligned) + (aligned_region) + (read_id_a_not_aligned)
 # Probably want to store a tuple like (qaln/taln, )
 
-# I think my approach will be to build a normal K-mer graph, requiring overlap between reads in order to form a valid path. Also should disallow any paths 
-# which connect paired reads in the wrong orientation
+# I think my approach will be to build a normal K-mer graph, requiring overlap between read_ids in order to form a valid path. Also should disallow any paths 
+# which connect paired read_ids in the wrong orientation
 
-# I think the best way to do this is just going to be an mmseqs pairwise alignment between all recruited reads, and then reading in the file. 
+# I think the best way to do this is just going to be an mmseqs pairwise alignment between all recruited read_ids, and then read_iding in the file. 
 
-
-
+# Especially with the reads mapped in both orientations, can't have both a forward and reverse version of the same read on the graph. 
+# For reads recruited in later iterations (i.e. don't have an enforced direction), there are three scenarios:
+# (1) Read maps to the original reference, in which case the read in the wrong orientation will be disconnected from the main graph. It is safe to remove these reads. 
+# (2) Read does not map to the original reference, in which case there will be two paths disconnected from the main graph. These should produce reverse complements of each other. 
+# If both forward and reverse reads are present, keep the one with the highest degree. If degrees are equal (2), either keep both or remove one at random. 
 
 class StringGraph():
 
@@ -64,10 +67,10 @@ class StringGraph():
             self.G.add_edge(f'{row.query}', f'{row.target}', **metadata)
             # graph.add_edge(f'{row.target}.R', f'{row.query}.R', **metadata)
 
-    def _get_pair_map(self, reads):
+    def _get_pair_map(self):
 
-        get_mate_pattern = lambda read : read.split('.')[0] + '.' + ('1' if (read.split('.')[1] == '0') else '0') + '.(R|F)'
-        return {read:[r for r in reads if re.match(get_mate_pattern(read), r)] for read in reads}
+        get_mate_pattern = lambda read_id : read_id.split('.')[0] + '.' + ('1' if (read_id.split('.')[1] == '0') else '0') + '.(R|F)'
+        return {read_id:[r for r in self.read_ids if re.match(get_mate_pattern(read_id), r)] for read_id in self.read_ids}
 
     def _get_start_nodes(self):
         return [n for n, d in self.G.in_degree() if d == 0]
@@ -75,14 +78,25 @@ class StringGraph():
     def _get_end_nodes(self):
         return [n for n, d in self.G.out_degree() if d == 0]
 
-    # Want to initialize with both the alignments and the complete reads list. 
-    def __init__(self, reads:list, align_df:pd.DataFrame, overlap_length:int=10):
+    # Want to initialize with both the alignments and the complete read_ids list. 
+    def __init__(self, align_df:pd.DataFrame, read_ids:list=None, overlap_length:int=10):
 
+        # TODO: Will eventually need to account for reads that are not aligned but have a mapped partner. 
         self.G = nx.DiGraph()
 
         # self.G.add_node(row.)
         for row in align_df.itertuples():
             self._add_edge(row)
+
+        self.read_ids = list(self.G.nodes()) # These reads will contain the strand and pair information. 
+        for _, mate_read_ids in self._get_pair_map().items():
+            assert len(mate_read_ids) <= 2, 'Graph.__init__: There should not be more than two nodes per read in the graph.'
+            if (len(mate_read_ids) < 2) or (degrees[0] == degrees[-1]):
+                continue 
+            degrees = [self.G.degree(mate_read_id) for mate_read_id in mate_read_ids]
+            remove_nodes = nx.node_connected_component(self.G, min(mate_read_ids, key=degrees))
+            self.G.remove_nodes_from(remove_nodes)
+
 
         print(f'StringGraph.__init__: Initialized a graph with {len(self.G.edges)} edges.')
         print(f'StringGraph.__init__: {len(self._get_start_nodes())} start nodes.')
@@ -94,15 +108,15 @@ class StringGraph():
 
 
 
-# # Representing every read of length n as a collection of n - k + 1 overlapping k-tuples (continuous short strings of fixed length k)
+# # Representing every read_id of length n as a collection of n - k + 1 overlapping k-tuples (continuous short strings of fixed length k)
 # class KmerGraph():
-#     def _get_sequences(reads_df):
+#     def _get_sequences(read_ids_df):
 
-#         # Include reads in the orientation they were mapped to the contig. If the read's mate is mapped in one orientation, even if the read
+#         # Include read_ids in the orientation they were mapped to the contig. If the read_id's mate is mapped in one orientation, even if the read_id
 #         # itself is unmapped, enforce the opposite orientation
 #         pass 
 
-#     def __init__(self, reads_df:pd.DataFrame, k:int=10):
+#     def __init__(self, read_ids_df:pd.DataFrame, k:int=10):
 #         self.k = k 
         
 
