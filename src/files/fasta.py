@@ -15,6 +15,14 @@ def fasta_count_sequences(path:str):
     result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
     return int(result.stdout)
 
+def fasta_get_ids(path:str, parser=lambda id_ : id_.split('|')[0]):
+    '''Read in all IDs from a file.'''
+    ids = subprocess.run(f'grep "^>" {path}', shell=True, check=True, capture_output=True).stdout.decode()
+    ids = ids.split('\n')
+    ids = [parser(id_.replace('>', '')) for id_ in ids]
+    ids = [id_.split(' ')[0] for id_ in ids]
+    return ids
+
 
 def _parse_prodigal_description(description:str):
     pattern = r'# ([\d]+) # ([\d]+) # ([-1]+) # ID=([^;]+);partial=([^;]+);start_type=([^;]+);rbs_motif=([^;]+);rbs_spacer=([^;]+);gc_cont=([\.\w]+)'
@@ -24,7 +32,7 @@ def _parse_prodigal_description(description:str):
     parsed_header['rbs_motif'] = 'none' if (parsed_header['rbs_motif'] == 'None') else parsed_header['rbs_motif']
     return parsed_header 
 
-get_contig_id = lambda id_ :  '_'.join(id_.split('_')[:-1])
+# get_contig_id = lambda id_ :  '_'.join(id_.split('_')[:-1])
 
 get_reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
 
@@ -52,14 +60,29 @@ class FASTAFile():
         return obj
         
     @classmethod
-    def from_file(cls, path:str):
+    def from_file(cls, path:str, start:int=0, chunk_size:int=None, filter_=None):
+        '''
+        :filter_ : A function which takes a Record as input and returns a Boolean value. 
+        '''
+
+        n = fasta_count_sequences(path)
+
         obj = cls()
         f = open(path, 'r')
         obj.seqs, obj.ids, obj.descriptions = [], [], []
-        for record in SeqIO.parse(path, 'fasta'):
+        for i, record in enumerate(SeqIO.parse(path, 'fasta')):
+            if i < start:
+                continue
+            if (chunk_size is not None) and (i - start) > chunk_size:
+                break
+            if (filter_ is not None):
+                if not filter_(record):
+                    continue 
+
             obj.ids.append(record.id)
             obj.descriptions.append(record.description.replace(record.id, '').strip())
             obj.seqs.append(str(record.seq))
+            
         f.close()
         obj.seqs = np.array(obj.seqs)
         obj.ids = np.array(obj.ids)
@@ -108,7 +131,7 @@ class FASTAFile():
             row['seq'] = seq
             if parse_description:
                 row.update(_parse_prodigal_description(description))
-                row['contig_id'] = get_contig_id(id_) # Extract contig ID. 
+                # row['contig_id'] = get_contig_id(id_) # Extract contig ID. 
                 row['start'], row['stop'], row['strand'] = int(row['start']), int(row['stop']), int(row['strand'])
             df.append(row)
         

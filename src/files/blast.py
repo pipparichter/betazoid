@@ -100,17 +100,19 @@ class BLASTFileGgKbase():
         patterns = [r'>(?P<feature_number>\d+) (?P<feature_id>[^\n]+)']
         patterns += [r'Length=(?P<subject_length>\d+)']
         patterns += [r'Score = (?P<bit_score>[\d\.]+) bits']
-        patterns += [r'Expect = (?P<e_value>[\.\d]+)']
+        patterns += [r'Expect = (?P<e_value>[e\-\.\d]+)']
         patterns += [r'Identities = (?P<n_identical>\d+)/(?P<alignment_length>\d+)']
         patterns += [r'Gaps = (?P<n_gaps>\d+)/(?P<alignment_length>\d+)']
 
         with open(path, 'r') as f:
             content = f.read()
 
-        query_info_pattern = r'Query=\s*((?P<query_id>\S+))[\s\S]*?Length=(?P<query_length>\d+)'
+        query_info_pattern = r'Query=\s*((?P<query_id>.+))\n\nLength=(?P<query_length>\d+)'
         query_info = re.search(query_info_pattern, content, flags=re.DOTALL|re.MULTILINE).groupdict()
+        
+        # Strip any (id=...) stuff tagged on to the query ID. 
+        query_info['query_id'] = re.sub(r'\(.*\)', '', query_info['query_id'])
         # print(re.search(query_info_pattern, content, flags=re.DOTALL|re.MULTILINE).groupdict())
-
         query_info['query_id'] = query_info['query_id'].replace('\n', '').replace(' ', '')
 
         # Make sure to use .+? so the match is lazy, not greedy. 

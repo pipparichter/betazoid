@@ -9,6 +9,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from src.files import FASTAFile
+from src.files.fasta import * 
 import requests 
 import scipy 
 import warnings 
