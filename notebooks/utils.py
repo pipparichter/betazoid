@@ -1,6 +1,12 @@
+import sys 
+sys.path.append('/home/prichter/Documents/banfield/betazoid/src/files/')
+
+from src.files.fasta import * 
+from src.files.gfa import * 
+
+import os 
 import re 
 import pandas as pd 
-import os 
 import glob
 import numpy as np 
 import seaborn as sns 
@@ -10,18 +16,34 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from src.files import FASTAFile
 from src.files.fasta import * 
-import requests 
-import scipy 
-import warnings 
-import json
-import itertools
 import subprocess
 from src.files.kofamscan import KofamscanFile
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import LinearSegmentedColormap, to_hex
-from Bio.Seq import Seq 
+from Bio.Seq import Seq
+
+
+PROJECT_IDS = pd.read_csv('project_ids.csv', index_col=0).project_id.to_dict()
+FORWARD_READS_PATHS = pd.read_csv('reads_paths.csv', index_col=0).forward_reads_path.to_dict()
+REVERSE_READS_PATHS = pd.read_csv('reads_paths.csv', index_col=0).reverse_reads_path.to_dict()
 
 reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
+
+def get_bbmap_command(ref_path, output_dir:str='/home/philippar', forward_reads_path:str=None, reverse_reads_path:str=None):
+    '''Generate a command for mapping reads files to a reference contig. Returns the bbmap command, as well as the output path
+    for the generated BAM file. 
+    
+    :param ref_path : 
+    :param output_dir : 
+    :param forward_reads_path : 
+    :param reverse_reads_path
+    '''
+    ref_name = os.path.basename(ref_path).replace('.fasta', '')
+    output_path = os.path.join(output_dir, f'{ref_name}.bam')
+    params = 'pigz=t unpigz=t ambiguous=random minid=0.96 idfilter=0.97 threads=64 out=stdout.sam editfilter=5'
+    cmd = f'bbmap.sh {params} in1={forward_reads_path} in2={reverse_reads_path} ref={ref_path} nodisk | shrinksam | sambam > {output_path}'
+    return cmd, output_path
+
 
 # # TODO: Speed this up with https://pypi.org/project/pyfaidx/.
 # def get_sequences(results_df:pd.DataFrame, path:str='../data/databases/nantong_groundwater/contigs.fa'):
