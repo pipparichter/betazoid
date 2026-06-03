@@ -3,6 +3,7 @@ sys.path.append('/home/prichter/Documents/banfield/betazoid/src/files/')
 
 from src.files.fasta import * 
 from src.files.gfa import * 
+from src.files.bam import BamFile
 
 import os 
 import re 
@@ -29,7 +30,17 @@ REVERSE_READS_PATHS = pd.read_csv('reads_paths.csv', index_col=0).reverse_reads_
 
 reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
 
-def get_bbmap_command(ref_path, output_dir:str='/home/philippar', forward_reads_path:str=None, reverse_reads_path:str=None):
+
+def load_seqs(ids:list, path:str=None):
+    '''Load the specified sequences from the FASTA file at path. Output is a dictionary mapping the IDs to the sequences.'''
+    ids = set(ids) # Remove duplicate contig IDs.
+    fasta_file = FASTAFile.from_file(path, filter_=lambda record : record.id in ids)
+    seqs = dict(zip(fasta_file.ids, fasta_file.seqs))
+    assert len(seqs) == len(ids), f'load_seqs: {len(ids)} sequence IDs provided, but only {len(ids)} loaded from {path}'
+    return seqs 
+
+
+def get_bbmap_command(ref_path, output_dir:str=None, forward_reads_path:str=None, reverse_reads_path:str=None, verbose:bool=True, **_params):
     '''Generate a command for mapping reads files to a reference contig. Returns the bbmap command, as well as the output path
     for the generated BAM file. 
     
@@ -38,11 +49,33 @@ def get_bbmap_command(ref_path, output_dir:str='/home/philippar', forward_reads_
     :param forward_reads_path : 
     :param reverse_reads_path
     '''
-    ref_name = os.path.basename(ref_path).replace('.fasta', '')
-    output_path = os.path.join(output_dir, f'{ref_name}.bam')
-    params = 'pigz=t unpigz=t ambiguous=random minid=0.96 idfilter=0.97 threads=64 out=stdout.sam editfilter=5'
+    ref_id = os.path.basename(ref_path).replace('.fasta', '')
+    output_path = os.path.join(output_dir, f'{ref_id}.bam')
+
+    # Define the default parameters. 
+    params = dict()
+    params['local'] = 'f'
+    params['pairedonly'] = 'f'
+    params['ambiguous'] = 'random'
+    params['minid'] = 0.9
+    params['idfilter'] = 0.95
+    params['editfilter'] = -1
+    params.update(_params)
+
+    if verbose:
+        print('get_bbmap_command: Using the following mapping settings:')
+        for param, value in params.items():
+            print(f'\t{param}: {value}')
+
+    params['out'] = 'stdout.sam'
+    params['threads'] = 64
+    params['pigz'] = 't'
+    params['unpigz'] = 't'
+
+    params = ' '.join([f'{param}={value}' for param, value in params.items()])
     cmd = f'bbmap.sh {params} in1={forward_reads_path} in2={reverse_reads_path} ref={ref_path} nodisk | shrinksam | sambam > {output_path}'
     return cmd, output_path
+
 
 
 # # TODO: Speed this up with https://pypi.org/project/pyfaidx/.

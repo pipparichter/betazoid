@@ -60,21 +60,17 @@ class FASTAFile():
         return obj
         
     @classmethod
-    def from_file(cls, path:str, start:int=0, chunk_size:int=None, filter_=None):
+    def from_file(cls, path:str, filter_=None):
         '''
         :filter_ : A function which takes a Record as input and returns a Boolean value. 
         '''
-
-        n = fasta_count_sequences(path)
-
         obj = cls()
+
         f = open(path, 'r')
         obj.seqs, obj.ids, obj.descriptions = [], [], []
+
         for i, record in enumerate(SeqIO.parse(path, 'fasta')):
-            if i < start:
-                continue
-            if (chunk_size is not None) and (i - start) > chunk_size:
-                break
+
             if (filter_ is not None):
                 if not filter_(record):
                     continue 
@@ -96,19 +92,6 @@ class FASTAFile():
             return 'nt'
         else:
             return 'aa'
-        
-    def get_seq(self, id_:str, start:int=0, stop:int=None, strand:str='+'):
-        assert id_ in self.ids, f'FASTAFile.get_seq: Sequence {id_} is not present.'
-
-        seq = self.seqs[self.ids == id_][0]
-        stop = len(seq) if (stop is None) else stop
-        assert len(seq) >= stop, f'FASTAFile.get_seq: Specified stop {stop} is out of bounds for sequence of length {len(seq)}.' # Prevents an out-of-bound slice from failing silently.
-        
-        seq = seq[start:stop]
-        if strand == '-':
-            seq = get_reverse_complement(seq)
-
-        return seq
     
         
     def get_gc_content(self, exclude_unknown:bool=False, check:bool=False):
@@ -148,17 +131,31 @@ class FASTAFile():
         SeqIO.write(records, f, 'fasta')
         f.close()
 
-def fasta_get_contig_sizes(path:str) -> dict:
-    fasta_file = FASTAFile.from_file(path)
-    contig_ids = fasta_file.ids
-    contig_sizes = dict(list(zip(contig_ids, fasta_file.seqs)))
-    return {contig_id:len(seq) for contig_id, seq in contig_sizes.items()}
-
-def fasta_get_genome_size(path:str) -> int:
-    return sum(list(fasta_get_contig_sizes(path).values()))
 
 
+# def fasta_get_contig_sizes(path:str) -> dict:
+#     fasta_file = FASTAFile.from_file(path)
+#     contig_ids = fasta_file.ids
+#     contig_sizes = dict(list(zip(contig_ids, fasta_file.seqs)))
+#     return {contig_id:len(seq) for contig_id, seq in contig_sizes.items()}
 
+# def fasta_get_genome_size(path:str) -> int:
+#     return sum(list(fasta_get_contig_sizes(path).values()))
+
+
+
+    # def get_seq(self, id_:str, start:int=0, stop:int=None, strand:str='+'):
+    #     assert id_ in self.ids, f'FASTAFile.get_seq: Sequence {id_} is not present.'
+
+    #     seq = self.seqs[self.ids == id_][0]
+    #     stop = len(seq) if (stop is None) else stop
+    #     assert len(seq) >= stop, f'FASTAFile.get_seq: Specified stop {stop} is out of bounds for sequence of length {len(seq)}.' # Prevents an out-of-bound slice from failing silently.
+        
+    #     seq = seq[start:stop]
+    #     if strand == '-':
+    #         seq = get_reverse_complement(seq)
+
+    #     return seq
 
 
     # @staticmethod
