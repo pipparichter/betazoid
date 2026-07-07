@@ -1,0 +1,13 @@
+* ./data/sr-vp/MpSRVP_contigs.fna
+
+* ./data/sr-vp/MpSRVP_proteins.faa
+
+* ./data/sr-vp/MpSRVP_rps3.faa
+    ggKbase list for genes (n=62) matching "BSCG--ribosomal--protein--S3" in the Methanoperedens_SRVP project. 
+
+* ./data/sr-vp/SRVP_rps3.faa
+    ggKbase list for genes matching "BSCG--ribosomal--protein--S3" in all projects matching SRVP* or SR-VP*. 
+
+* ./data/sr-vp/MpSRVP_organism_info.tsv
+
+* ./data/sr-vp/bin_analysis.tsv

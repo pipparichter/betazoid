@@ -68,7 +68,7 @@ class BLASTFileJSON():
 
 
 
-class BLASTFileGgKbase():
+class BLASTFileText():
     '''For parsing BLAST output files from ggKbase.
     Example BLAST entry looks like this. The first number after the > is the feature ID, which can be located :
 

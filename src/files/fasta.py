@@ -117,7 +117,7 @@ class FASTAFile():
                 # row['contig_id'] = get_contig_id(id_) # Extract contig ID. 
                 row['start'], row['stop'], row['strand'] = int(row['start']), int(row['stop']), int(row['strand'])
             df.append(row)
-        
+        assert len(df) > 0, 'FASTAFile: No sequences found in file.'
         df = pd.DataFrame(df).set_index('id')
 
         return df

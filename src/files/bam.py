@@ -2,7 +2,6 @@ import io
 import pandas as pd 
 import numpy as np 
 import subprocess
-from src.files import FASTAFile
 import re 
 
 
