@@ -3,11 +3,13 @@ import re
 from typing import List, Dict, Tuple, NoReturn
 from tqdm import tqdm 
 from Bio import SeqIO
+from Bio.SeqIO.FastaIO import FastaWriter
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import pandas as pd 
 import numpy as np 
 import subprocess
+import io
 
 
 def fasta_count_sequences(path:str):
@@ -50,60 +52,50 @@ class FASTAFile():
     def __len__(self):
         return len(self.seqs)
     
+    @staticmethod
+    def _has_valid_description_column(df:pd.DataFrame):
+        return ('description' in df.columns) and np.all(~df.description.isnull())
+    
+
+    def __getitem__(self, id_):
+        i = np.where(np.array(self.ids) == id_)[0][0]
+        return self.seqs[i]
+    
     @classmethod
     def from_df(cls, df:pd.DataFrame):
         obj = cls()
-
         obj.seqs = df.seq.values
         obj.ids = df.index.values 
-        obj.descriptions = df.description.values if ('description' in df.columns) else [''] * len(obj.ids)
+        obj.descriptions = df.description.values if FASTAFile._has_valid_description_column(df) else [''] * len(obj.ids)
         return obj
+    
+    @staticmethod
+    def _from_file_index(path:str, ids:list=None):
+        get_description = lambda record : ' ' if (type(record.description) != str) else record.description.replace(record.id, '')
         
+        records = SeqIO.index(path, 'fasta')
+        records = [records[id_] for id_ in ids]
+        records = [(record.id, record.seq, get_description(record)) for record in records]
+        return list(zip(*records))
+
+    @staticmethod
+    def _from_file(path:str):
+        get_description = lambda record : ' ' if (type(record.description) != str) else record.description.replace(record.id, '')
+        
+        records = [(record.id, record.seq, get_description(record)) for record in SeqIO.parse(path, 'fasta')]
+        return list(zip(*records))
+
     @classmethod
-    def from_file(cls, path:str, filter_=None):
-        '''
-        :filter_ : A function which takes a Record as input and returns a Boolean value. 
-        '''
+    def from_file(cls, path:str, ids:list=None):
         obj = cls()
 
-        f = open(path, 'r')
-        obj.seqs, obj.ids, obj.descriptions = [], [], []
-
-        for i, record in enumerate(SeqIO.parse(path, 'fasta')):
-
-            if (filter_ is not None):
-                if not filter_(record):
-                    continue 
-
-            obj.ids.append(record.id)
-            obj.descriptions.append(record.description.replace(record.id, '').strip())
-            obj.seqs.append(str(record.seq))
-            
-        f.close()
-        obj.seqs = np.array(obj.seqs)
-        obj.ids = np.array(obj.ids)
+        ids, seqs, descriptions = FASTAFile._from_file_index(path, ids=ids) if (ids is not None) else FASTAFile._from_file(path)
+        obj.seqs = [str(seq) for seq in seqs]
+        obj.ids = list(ids)
+        obj.descriptions = list(descriptions)
         # assert len(obj.seqs) == len(np.unique(obj.seqs)), f'FASTAFile.from_file: Some of the sequence IDs in {path} are not unique.'
         return obj 
-    
-    def get_type(self):
-        residues = ''.join(self.seqs)
-        residues = np.unique(list(residues))
-        if len(residues) < 20:
-            return 'nt'
-        else:
-            return 'aa'
-    
         
-    def get_gc_content(self, exclude_unknown:bool=False, check:bool=False):
-        if check:
-            assert self.get_type() == 'nt', 'FASTAFile.get_gc_content: Needs to be a FASTA nucleotide file to compute GC content.'
-        residues = ''.join(self.seqs)
-        if exclude_unknown:
-            residues = residues.replace('N', '')
-        n = len(residues) # Total number of residues. 
-        num_g = residues.count('G')
-        num_c = residues.count('C')
-        return (num_g + num_c) / n
             
     def to_df(self, parse_description:bool=False) -> pd.DataFrame:
 
@@ -121,17 +113,36 @@ class FASTAFile():
         df = pd.DataFrame(df).set_index('id')
 
         return df
+    
+    def __str__(self, wrap=None):
+        '''Convert the FASTA file information to a string.'''
+        buffer = io.StringIO()
+        writer = FastaWriter(buffer, wrap=wrap)
 
-    def write(self, path:str, mode:str='w') -> NoReturn:
-        f = open(path, mode=mode)
         records = []
-        for id_, seq in zip(self.ids, self.seqs):
-            record = SeqRecord(Seq(seq), id=str(id_), description='')
+        for id_, seq, description, in zip(self.ids, self.seqs, self.descriptions):
+            record = SeqRecord(Seq(seq), id=str(id_), description=description) if (description != ' ') else SeqRecord(Seq(seq), id=str(id_))
             records.append(record)
-        SeqIO.write(records, f, 'fasta')
+
+        # SeqIO.write(records, buffer, 'fasta')
+        writer.write_file(records)
+        return buffer.getvalue()
+
+    def write(self, path:str=None, mode:str='w') -> NoReturn:
+        f = open(path, mode=mode)
+        f.write(str(self))
         f.close()
 
-
+    # def get_gc_content(self, exclude_unknown:bool=False, check:bool=False):
+    #     if check:
+    #         assert self.get_type() == 'nt', 'FASTAFile.get_gc_content: Needs to be a FASTA nucleotide file to compute GC content.'
+    #     residues = ''.join(self.seqs)
+    #     if exclude_unknown:
+    #         residues = residues.replace('N', '')
+    #     n = len(residues) # Total number of residues. 
+    #     num_g = residues.count('G')
+    #     num_c = residues.count('C')
+    #     return (num_g + num_c) / n
 
 # def fasta_get_contig_sizes(path:str) -> dict:
 #     fasta_file = FASTAFile.from_file(path)

@@ -102,6 +102,25 @@ class BamFile():
         df = pd.DataFrame(df).astype({'ref_id':'string', 'ref_length':'int'})
         return df 
     
+    @staticmethod
+    def _parse_tags(result:str, num_entries:int=None):
+        tag_patterns = dict()
+        tag_patterns['NM'] = r'NM:i:(\d+)'
+        tag_patterns['AM'] = r'AM:i:(\d+)'
+        tag_patterns['NH'] = r'NH:i:(\d+)'
+        
+        df = list()
+        for line in [line for line in result.split('\n') if (len(line) > 0)]:
+            row = dict()
+            for tag, pattern in tag_patterns.items():
+                match_ = re.search(pattern, line)
+                if match_ is not None:
+                    row[tag] = int(match_.group(1))
+            # if len(row) > 0:
+            df.append(row)
+        assert len(df) == num_entries, f'BamFile._parse_tags: Expected {num_entries} entries, but got {len(df)}.'
+        return pd.DataFrame(df)
+
 
     def _read(self, include_flags:int=None, exclude_flags:int=None):
         cmd = ['samtools', 'view']
@@ -112,10 +131,11 @@ class BamFile():
         cmd += [self.path]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
         df = pd.read_csv(io.StringIO(result), sep='\t', header=None, names=BamFile.fields, usecols=range(len(BamFile.fields)))
+        df = pd.concat([df, BamFile._parse_tags(result, num_entries=len(df))], axis=1)
         df = df.astype({'ref_id':'string'}) 
         df = df.merge(self._read_header(), on='ref_id', how='left') # Add header information. 
         return df 
-    
+
 
     @staticmethod
     def _get_pair_orientation(df:pd.DataFrame):

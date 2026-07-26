@@ -6,7 +6,7 @@ import os
 
 
 
-class BLASTFileJSON():
+class BLASTFile():
 
     field_map = dict()
     field_map['accession'] = 'subject_id'
@@ -56,7 +56,7 @@ class BLASTFileJSON():
                 df.append(row)
 
         df = pd.DataFrame(df)
-        df = df[list(BLASTFileJSON.field_map.keys())].rename(columns=BLASTFileJSON.field_map) # Rename columns according to the field map. 
+        # df = df[list(BLASTFileJSON.field_map.keys())].rename(columns=BLASTFileJSON.field_map) # Rename columns according to the field map. 
         
         obj = cls()
         obj.df = df 
