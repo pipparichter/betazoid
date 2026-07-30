@@ -3,12 +3,29 @@ import numpy as np
 import os 
 import glob 
 import json
+import orjson
 import re
 from fasta import FASTAFile
 import itertools 
 
+CHAIN_IDS = list()
+for n in range(1, 3):
+    for chain_id in itertools.product('ABCDEFGHIJKLMNOPQRSTUVWXYZ', repeat=n):
+        CHAIN_IDS.append(''.join(chain_id[::-1]))
 
-CHAIN_IDS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+def load_json(path):
+    '''Read a JSON file from the input path using the faster orjson parser. '''
+    try:
+        with open(path, 'rb') as f:
+            data = f.read()
+            data = orjson.loads(data)
+        return data
+    except Exception as err:
+        print(f'load_json: Could not decode {path}, {err.msg}')
+        print(content)
+        return None
+
 
 # https://github.com/google-deepmind/alphafold3/blob/main/docs/input
 class AlphaFoldInputFile():
@@ -16,9 +33,10 @@ class AlphaFoldInputFile():
     from the online AlphaFold server.'''
 
     # def __init__(self, name:str, dialect='alphafoldserver', version:int=1, num_seeds:int=5):
-    def __init__(self, name:str, dialect='alphafold3', version:int=2, num_seeds:int=5):
+    def __init__(self, name:str, dialect='alphafold3', version:int=4, num_seeds:int=2):
         self.name = name 
-        
+        self.version = version
+
         self.info = {'dialect':dialect, 'version':version, 'modelSeeds':[seed for seed in range(1, num_seeds + 1)]} 
         self.info['name'] = name
         self.info['sequences'] = list()
@@ -32,16 +50,16 @@ class AlphaFoldInputFile():
         self.seq_types['dna'] = 'dnaSequence' if (dialect == 'alphafoldserver') else 'dna'
 
         self.ligand_types = dict()
-        self.ligand_types['atp'] = ('ligand', 'CCD_ATP')
-        self.ligand_types['adp'] = ('ligand', 'CCD_ADP')
+        self.ligand_types['atp'] = ('ligand', 'CCD_ATP') if (dialect == 'alphafoldserver') else ('ligand', 'ATP')
+        self.ligand_types['adp'] = ('ligand', 'CCD_ADP') if (dialect == 'alphafoldserver') else ('ligand', 'ADP')
         self.ligand_types['mg'] = ('ion', 'MG') if (dialect == 'alphafoldserver') else ('ligand', 'MG')
 
         self.ligands = {ligand_type:0 for ligand_type in self.ligand_types.keys()}
 
-    def add_seq(self, seq:str, n:int=1, type_:str='protein', paired_msa:str=None, unpaired_msa:str=None):
+    def add_seq(self, seq:str, n:int=1, type_:str='protein', paired_msa:str=None, unpaired_msa:str=None, description:str=None):
         ''' '''
         assert type_ in ['protein', 'dna'], f'AlphaFoldInputFile.add_seq: Sequence type must be either dna or protein.'
-        assert not ((paired_msa is None) ^ (unpaired_msa is None)), f'AlphaFoldInputFile.add_seq: Both unpairedMsa and pairedMsa have to either be both set (i.e. non-null), or both unset (i.e. both null, explicitly or implicitly).'
+        # assert not ((paired_msa is None) ^ (unpaired_msa is None)), f'AlphaFoldInputFile.add_seq: Both unpairedMsa and pairedMsa have to either be both set (i.e. non-null), or both unset (i.e. both null, explicitly or implicitly).'
 
         info = {'sequence':seq}
         if self.dialect == 'alphafoldserver':
@@ -49,12 +67,15 @@ class AlphaFoldInputFile():
         elif self.dialect == 'alphafold3':
             info['id'] = self._get_chain_ids(n)
 
-        if (paired_msa is not None) and (unpaired_msa is not None):
+        if (paired_msa is not None):
             info['pairedMsa'] = paired_msa
+        if (unpaired_msa is not None):
             info['unpairedMsa'] = unpaired_msa
+        if (description is not None) and (self.version == 4):
+            info['description'] = description
 
-            query_seqs = np.array([paired_msa.split('\n')[1], unpaired_msa.split('\n')[1]])
-            assert np.all(seq == query_seqs), 'AlphaFoldInputFile.add_seq: The sequence in the first line of each MSA must match the query.'
+            # query_seqs = np.array([paired_msa.split('\n')[1], unpaired_msa.split('\n')[1]])
+            # assert np.all(seq == query_seqs), 'AlphaFoldInputFile.add_seq: The sequence in the first line of each MSA must match the query.'
 
         self.info['sequences'] += [{self.seq_types[type_]:info}]
         
@@ -86,11 +107,12 @@ class AlphaFoldInputFile():
         self._add_ligand(type_='mg', n=n)
         
     def write(self, path:str):
+        info = [self.info] if (self.dialect == 'alphafoldserver') else self.info
         with open(path, 'w') as f:
-            json.dump(self.info, f)
+            json.dump(info, f)
 
     def get_info(self):
-        return [self.info]
+        return self.info.copy()
 
 
 
@@ -99,67 +121,102 @@ class AlphaFoldOutput():
     patterns['summary'] = r'(seed-\d+_sample-\d+)\/summary_confidences'
     patterns['full'] = r'(seed-\d+_sample-\d+)\/confidences'
 
+    def _get_best_model(self):
+        '''Get the name of the model with the highest ranking score from the ranking_scores.csv file in the AlphaFold3 output root directory.
+        
+        :returns: The name of the model with the highest ranking score, which is of the form seed-x-sample-y. 
+        '''
+        df = pd.read_csv(os.path.join(self.dir_path, 'ranking_scores.csv')) # This file contains the model rankings. 
+        df = df.sort_values('ranking_score', ascending=False)
+        seed, sample = df.iloc[0]['seed'], df.iloc[0]['sample']
+        return f'seed-{int(seed)}_sample-{int(sample)}' # The name of the model corresponding to the highest score. 
 
-    @staticmethod
-    def _get_confidences(dir_path:str):
+    def _get_confidences(self):
         '''Recursively search the AlphaFold output directory for the data paths containing the full and summary model confidence data.
         These output files are then organized into models according to the sub-model they correspond to. 
         The JSON file containing the full confidence data includes:
         (1)
         The JSON file containing the summary confidence data includes:
         (1)
-
-        : param dir_path: The root directory for the AlphaFold prediction. 
         '''
+        # print(f'AlphaFoldOutput._get_confidences: Using file patterns:')
+        # for file_type, pattern in self.patterns.items():
+        #     print(f'\t{file_type}\t{pattern}')
+
         confidences = dict()
+        for path in glob.glob(os.path.join(self.dir_path, '**', '*'), recursive=True):
 
-        for path in glob.glob(os.path.join(dir_path, '**', '*')):
-
-            for file_type, pattern in AlphaFoldOutput.patterns.items():
+            for file_type, pattern in self.patterns.items():
                 if re.search(pattern, path) is None:
                     continue 
                 model = re.search(pattern, path).group(1)
 
                 if model in confidences:
-                    confidences[model][file_type] = path 
+                    confidences[model][file_type] = os.path.abspath(path)
                 else:
-                    confidences[model] = {file_type:path}
-
+                    confidences[model] = {file_type:os.path.abspath(path)}
+        assert len(confidences) > 0, f'AlphaFoldOutput._get_confidences: Was unable to find any confidence JSON files in {self.dir_path}.'
         return confidences 
 
 
     def __init__(self, dir_path=None):
         # Paths to the confidence output for each model. 
-        self.confidences = AlphaFoldOutput._get_confidences(dir_path)
+        self.dir_path = os.path.abspath(dir_path)
+        self.confidences = self._get_confidences()
         self.name = os.path.basename(dir_path)
 
-        with open(os.path.join(dir_path, f'{self.name}_data.json'), 'r') as f:
-            self.data = json.load(f)
+        self.data = load_json(os.path.join(dir_path, f'{self.name}_data.json'))
 
         get_chain_id = lambda entry : [info['id'] for info in entry.values()][0]
         self.chain_ids = [get_chain_id(entry) for entry in self.data['sequences']]
         self.num_chains = len(self.chain_ids)
+        self.best_model = self._get_best_model()
 
-
-    def get_paes(self):
-        paes = dict()
-        for model, paths in self.confidences.items():
-            with open(paths['full'], 'r') as f:
-                data = json.load(f)
-                paes[model] = pd.DataFrame(data['pae'], index=data['token_chain_ids'], columns=data['token_chain_ids'])
-        return paes
     
-    
-    def get_iptms(self):
-        iptms = dict()
-
+    def get_iptms(self, mean_pool:bool=False):
+        data = dict()
         for model, paths in self.confidences.items():
             with open(paths['summary'], 'r') as f:
                 try:
-                    iptms[model] = json.load(f)['iptm']
+                    data[model] = json.load(f)['iptm']
                 except:
                     print(f'AlphaFoldOutput.get_iptms: Could not decode {f.read()}')
-        return iptms
+        if mean_pool:
+            data = np.mean(list(data.values()))
+        return data
+
+    def get_token_chain_ids(self):
+        '''Get the token chain IDs from the full data output. This is a list of strings indicating which chain each position in a matrix (e.g. 
+        the PAE matrix) belongs to.'''
+        # Load the full data for each model; these SHOULD be the same across models, but load them all just to be safe.
+        token_chain_ids = np.array([load_json(paths['full'])['token_chain_ids'] for paths in self.confidences.values()])
+        assert np.all(np.expand_dims(token_chain_ids[0], axis=0) == token_chain_ids), 'AlphaFoldOutput.get_token_chain_ids: Token chain IDs are inconsistent.'
+        return token_chain_ids[0]
+    
+
+    def _get_full_data(self, field:str='contact_probs', mean_pool:bool=False, models:list=None):
+        '''
+        
+        '''
+        assert field in ['contact_probs', 'pae'], f'AlphaFoldOutput._get_full_data: Input field {field} is not recognized.'
+        token_chain_ids = self.get_token_chain_ids()
+        # Get the confidence data for the specified models (or all models if none are specified).
+        data = {model:load_json(paths['full'])[field] for model, paths in self.confidences.items() if ((model is None) or (model in models))}
+
+        if mean_pool:
+            data = np.mean(list(data.values()), axis=0)
+            return pd.DataFrame(data, index=token_chain_ids, columns=token_chain_ids)
+        else: # Convert each individual matrix to DataFrames at the end if not mean pooling. 
+            data = {model:pd.DataFrame(data_, index=token_chain_ids, columns=token_chain_ids) for model, data_ in data.items()}
+        return data
+
+
+    def get_contact_probs(self, mean_pool:bool=True, models:list=None):
+        return self._get_full_data(field='contact_probs', mean_pool=mean_pool, models=models)   
+    
+    def get_paes(self, mean_pool:bool=True, models:list=None):
+        return self._get_full_data(field='pae', mean_pool=mean_pool, models=models)
+
     
     def get_ptms(self):
         ptms = dict()
@@ -195,42 +252,68 @@ class AlphaFoldOutput():
 
 
 
-
-
 class AlphaFoldServerOutput(AlphaFoldOutput):
 
     patterns = dict()
     patterns['summary'] = r'.*summary_confidences_(\d+)'
     patterns['full'] = r'full_data_(\d+)'
-    
+
+    def _get_best_model(self):
+        '''Get the name of the model with the highest ranking score from the ranking_scores.csv file in the AlphaFold3 output root directory.
+        
+        :returns: The name of the model with the highest ranking score, which is of the form seed-x-sample-y. 
+        '''
+        models, scores = list(), list()
+        for model, paths in self.confidences.items():
+            score = load_json(paths['summary'])['ranking_score']
+            scores.append(score)
+            models.append(model)
+
+        best_model = models[np.argmax(scores)]
+        return best_model
+
+    @staticmethod
+    def _get_inputs(path:str):
+        ''''''
+        type_map = {'proteinChain':'protein', 'dnaSequence':'dna'}
+        data = load_json(path)[0] # The entire thing is wrapped in a list, so grab the first index.
+
+        df, i = list(), 0
+        for group, info in enumerate(data['sequences']):
+            type_ = list(info.keys())[0]
+            count, seq = info[type_]['count'], info[type_].get('sequence', None)
+            df += [{'type':type_, 'chain_id':CHAIN_IDS[j], 'group':group, 'seq':seq} for j in range(i, i + count)]
+            i += count 
+
+        df = pd.DataFrame(df)
+        df['type'] = df['type'].apply(lambda type_: type_map.get(type_, type_))
+        return df, data['dialect']
+
+
     
     def __init__(self, dir_path=None):
         # Paths to the confidence output for each model. 
-        self.confidences = AlphaFoldServerOutput._get_confidences(dir_path)
+        self.dir_path = dir_path 
+        self.confidences = self._get_confidences()
         self.name = os.path.basename(dir_path)
         self.dir_path = dir_path
 
-        with open(os.path.join(dir_path, f'{self.name}_job_request.json'), 'r') as f:
-            self.data = json.load(f)[0]
+        self.inputs, dialect = AlphaFoldServerOutput._get_inputs(os.path.join(dir_path, f'{self.name}_job_request.json'))
+        assert dialect == 'alphafoldserver', f'AlphaFoldServerOutput: Expected dialect alphafoldserver, but got {dialect}.'
 
-        get_num_chains = lambda entry : [info['count'] for info in entry.values()][0]
-        self.num_chains = sum([get_num_chains(entry) for entry in self.data['sequences']])
-        self.chain_ids = [CHAIN_IDS[i] for i in range(self.num_chains)]
+        self.num_chains = len(self.inputs)
+        self.chain_ids = self.inputs.chain_id.unique()
+        self.best_model = self._get_best_model()
 
-    def get_protein_chain_ids(self):
-        '''Obtain the chains corresponding to actual protein sequences (not ligands or DNA) using the data.json file.'''
-        
-        protein_chain_idxs = list()
-        i = 0
 
-        for entry in self.data['sequences']:
-            type_ = list(entry.keys())[0]
-            n = entry[type_]['count']
+    def get_chain_ids(self, type_:str='protein', group:bool=False):
 
-            if type_ == 'protein':
-                protein_chain_idxs += list(range(i, i + n))
-            i += n
-        return [CHAIN_IDS[i] for i in protein_chain_idxs]
+        inputs = self.inputs[self.inputs['type'] == type_].copy()
+        if group:
+            return [df.chain_id.unique().tolist() for _, df in inputs.groupby('group')]
+        else:
+            return inputs.chain_id.unique().tolist()
+    
 
     def get_msas(self):
         # MSA file names look like: fold_a7xxr1_bp742_1mer_mg_atp_paired_msa_chains_a_b_c.a3m
@@ -255,13 +338,6 @@ class AlphaFoldServerOutput(AlphaFoldOutput):
             msas[match_.group(3)][match_.group(2)] = msa 
 
         return list(msas.values()) # Make sure paired and unpaired for the same chains are associated here. 
-
-
-
-
-
-
-    
 
 
 def get_interfaces(self, min_contact_prob=0.7, pairwise=True, chain_ids=None):

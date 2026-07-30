@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np 
 import subprocess
 import re 
+import os 
 
 
 # BAM files contain the following information. 
@@ -12,6 +13,7 @@ import re
 # 4. CIGAR: Compact representation of how the read aligns to the reference (matches, insertions, deletions)
 # 5. FLAGS: Binary flags that encode information such as strand, paired-end status, whether the read is mapped, etc.
 
+# BAM files differ from SAM files... 
 
 # -f option includes reads with flag, -F excludes reads with flag. 
 FLAGS = dict()
@@ -69,11 +71,20 @@ def parse_cigar(cigar:str):
 
 
 class BamFile():
+    '''Binary Alignment Map (BAM) files...'''
+
     # SAM file will always have 11 columns, but can have a variable number of tags after the first 11 (which I ignore here).
     fields = ['read_id', 'flag', 'ref_id', 'position', 'mapping_quality', 'cigar', 'mate_ref_id', 'mate_position', 'template_length', 'seq', 'quality_string']
 
     def __init__(self, path:str=None):
-        self.path = path  
+        self.path = os.path.abspath(path)
+
+        index_path = f'{self.path}.bai'
+        if not os.path.exists(index_path):
+            print(f'BamFile.__init__: No index file {index_path} was found.')
+            self.index_path = None 
+        else:
+            self.index_path = index_path
 
     @classmethod
     def from_file(cls, path:str):
@@ -81,7 +92,6 @@ class BamFile():
     
     @staticmethod
     def _parse_flags(flags):
-
         metadata = dict()
         for label, code in FLAGS.items():
             metadata[label] = [bool(code & flag) for flag in flags]
@@ -122,13 +132,20 @@ class BamFile():
         return pd.DataFrame(df)
 
 
-    def _read(self, include_flags:int=None, exclude_flags:int=None):
+    def _read(self, include_flags:int=None, exclude_flags:int=None, ref_id:str=None):
         cmd = ['samtools', 'view']
+
+
         if include_flags is not None:
             cmd += ['-f', str(include_flags)]
         if exclude_flags is not None:
             cmd += ['-F', str(exclude_flags)]
         cmd += [self.path]
+
+        if ref_id is not None:
+            assert self.index_path is not None, 'Bamfile._read: The BAM file must have an index to access a mappings for a particular reference. '
+            cmd += [ref_id]
+
         result = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
         df = pd.read_csv(io.StringIO(result), sep='\t', header=None, names=BamFile.fields, usecols=range(len(BamFile.fields)))
         df = pd.concat([df, BamFile._parse_tags(result, num_entries=len(df))], axis=1)
@@ -172,9 +189,9 @@ class BamFile():
         return alignments 
 
 
-    def to_df(self, include_flags:int=None, exclude_flags:int=None):
+    def to_df(self, include_flags:int=None, exclude_flags:int=None, ref_id:str=None):
 
-        df = self._read(include_flags=include_flags, exclude_flags=exclude_flags)
+        df = self._read(include_flags=include_flags, exclude_flags=exclude_flags, ref_id=ref_id)
 
         # Parse the flags and add stored metadata to the DataFrame. 
         for col, data in BamFile._parse_flags(df.flag).items():
