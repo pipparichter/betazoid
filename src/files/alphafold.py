@@ -23,7 +23,7 @@ def load_json(path):
         return data
     except Exception as err:
         print(f'load_json: Could not decode {path}, {err.msg}')
-        print(content)
+        print(data)
         return None
 
 
@@ -67,10 +67,12 @@ class AlphaFoldInputFile():
         elif self.dialect == 'alphafold3':
             info['id'] = self._get_chain_ids(n)
 
-        if (paired_msa is not None):
-            info['pairedMsa'] = paired_msa
+
         if (unpaired_msa is not None):
             info['unpairedMsa'] = unpaired_msa
+            info['pairedMsa'] = ''
+        if (paired_msa is not None):
+            info['pairedMsa'] = paired_msa
         if (description is not None) and (self.version == 4):
             info['description'] = description
 
@@ -171,19 +173,10 @@ class AlphaFoldOutput():
         self.chain_ids = [get_chain_id(entry) for entry in self.data['sequences']]
         self.num_chains = len(self.chain_ids)
         self.best_model = self._get_best_model()
+        self.best_model_path = os.path.join(self.dir_path, self.best_model, 'model.cif')
+        assert os.path.exists(self.best_model_path), f'AlphaFoldOutput.__init__: Best model path {self.best_model_path} does not exist.'
 
-    
-    def get_iptms(self, mean_pool:bool=False):
-        data = dict()
-        for model, paths in self.confidences.items():
-            with open(paths['summary'], 'r') as f:
-                try:
-                    data[model] = json.load(f)['iptm']
-                except:
-                    print(f'AlphaFoldOutput.get_iptms: Could not decode {f.read()}')
-        if mean_pool:
-            data = np.mean(list(data.values()))
-        return data
+
 
     def get_token_chain_ids(self):
         '''Get the token chain IDs from the full data output. This is a list of strings indicating which chain each position in a matrix (e.g. 
@@ -193,6 +186,22 @@ class AlphaFoldOutput():
         assert np.all(np.expand_dims(token_chain_ids[0], axis=0) == token_chain_ids), 'AlphaFoldOutput.get_token_chain_ids: Token chain IDs are inconsistent.'
         return token_chain_ids[0]
     
+    def _get_summary_data(self, field:str='iptm', mean_pool:bool=False, models:list=None):
+        '''
+        
+        '''
+        models = list(self.confidences.keys()) if (models is None) else models
+        data = {model:load_json(paths['summary'])[field] for model, paths in self.confidences.items() if (model in models)}
+        if mean_pool:
+            data = np.mean(list(data.values()))
+        return data
+
+    def get_ptms(self, mean_pool:bool=False, models:list=None):
+        return self._get_summary_data('ptm', mean_pool=mean_pool, models=models)
+
+    def get_iptms(self, mean_pool:bool=False, models:list=None):
+        return self._get_summary_data('iptm', mean_pool=mean_pool, models=models)
+
 
     def _get_full_data(self, field:str='contact_probs', mean_pool:bool=False, models:list=None):
         '''
@@ -217,16 +226,6 @@ class AlphaFoldOutput():
     def get_paes(self, mean_pool:bool=True, models:list=None):
         return self._get_full_data(field='pae', mean_pool=mean_pool, models=models)
 
-    
-    def get_ptms(self):
-        ptms = dict()
-        for model, paths in self.confidences.items():
-            with open(paths['summary'], 'r') as f:
-                try:
-                    ptms[model] = json.load(f)['ptm']
-                except:
-                    print(f'AlphaFoldOutput.get_ptms: Could not decode {f.read()}')
-        return ptms
 
     def get_protein_chain_ids(self):
         '''Obtain the chains corresponding to actual protein sequences (not ligands or DNA) using the data.json file.'''

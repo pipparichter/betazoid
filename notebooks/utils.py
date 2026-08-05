@@ -4,12 +4,13 @@ sys.path.append('/home/prichter/Documents/banfield/betazoid/src/')
 
 from fasta import FASTAFile
 from tmhmm import TMHMMFile
-from gfa import GFAFile 
+from gfa import GFAFile
 from bam import BamFile
 from dssp import DSSPFile
 from alphafold import AlphaFoldInputFile, AlphaFoldOutput, AlphaFoldServerOutput
 from blast import BLASTFile
-from files.pdb import PDBFile
+from files.pdb import PDBFile, cif_to_pdb, sph_to_pdb, ATOMS
+import orjson
 
 import os 
 import re 
@@ -34,6 +35,9 @@ import json
 import matplotlib.pyplot as plt
 from cycler import cycler
 
+# Functions for JSON parsing. 
+# -------------------------------------------------------------------------------------------------------------------------------------------------
+
 def default(obj):
     if isinstance(obj, np.ndarray):
         return obj.tolist()
@@ -45,6 +49,19 @@ def default(obj):
         return bool(obj)
     raise TypeError
 
+
+def load_json(path):
+    '''Read a JSON file from the input path using the faster orjson parser. '''
+    try:
+        with open(path, 'rb') as f:
+            data = f.read()
+            data = orjson.loads(data)
+        return data
+    except Exception as err:
+        print(f'load_json: Could not decode {path}, {err.msg}')
+        print(data)
+        return None
+# -------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 INTERPROSCAN_FIELDS = ['gene_id', 'checksum', 'length', 'analysis', 'accession', 'description', 'start','stop', 'e_value', 'status', 'date', 'interpro_accession', 'interpro_description', 'go_terms', 'pathways']
@@ -58,7 +75,6 @@ colors = ['#6A5A4B', '#7A6956', '#8B7A62', '#9A8B68','#8B9164','#768C66','#64836
 colors = ['#8A5E3B', '#A0704F', '#B38A5A', '#9AA45A', '#7FA65E', '#62A46A', '#4F9D78', '#4F9A8C', '#5A93A0', '#6A89B0', '#7A7FB8']
 GENOME_ID_COLORS = dict(zip(['bz_0', 'bz_1', 'bz_2', 'bz_3', 'bz_4', 'bz_5', 'bz_7', 'bz_8', 'bz_9', 'bz_10', 'bz_11'], colors))
 
-plt.rcParams['axes.prop_cycle'] = cycler(color=["#202020","#606060","#808080","#A0A0A0","#BFBFBF","#D9D9D9"])
 plt.rcParams['axes.prop_cycle'] = cycler(color=colors)
 
 
@@ -67,7 +83,7 @@ STOP_CODONS = ['TAA', 'TAG', 'TGA']
 
 reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
 # get_gene_id = lambda path : os.path.basename(path).replace('_pred.txt', '').replace('genes_', '') # Remove the prefix and file extension. 
-get_gene_id = lambda string : re.search(r'orfm.bz_\d+\.\d+_\d+', string).group(0)
+get_gene_id = lambda string : re.search(r'orfm.bz_\d+\.\d+_\d+', string).group(0) if (re.search(r'orfm.bz_\d+\.\d+_\d+', string) is not None) else None
 get_genome_id = lambda string : re.search(r'bz_\d+', string).group(0)
 
 def load_colabfold_plddts(path:str='../data/genes/colabfold/scores.json', gene_ids=None):
