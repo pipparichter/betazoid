@@ -33,8 +33,7 @@ class BLASTFile():
     def __init__(self):
         pass 
 
-    @classmethod
-    def from_file(cls, path):
+    def _parse_json_file(path:str) -> pd.DataFrame:
 
         with open(path, 'r') as f:
             content = json.load(f)
@@ -55,47 +54,30 @@ class BLASTFile():
                 row.update(hit['hsps'][0]) # Get the best high-scoring pair. 
                 df.append(row)
 
-        df = pd.DataFrame(df)
+        return pd.DataFrame(df)
         # df = df[list(BLASTFileJSON.field_map.keys())].rename(columns=BLASTFileJSON.field_map) # Rename columns according to the field map. 
+
         
-        obj = cls()
-        obj.df = df 
-        return obj
-    
 
-    def to_df(self):
-        return self.df.copy()
+    @staticmethod
+    def _from_ggkbase_text_file(path:str) -> pd.DataFrame:
+        '''For parsing BLAST output files from ggKbase.
+        Example BLAST target entry looks like this. The first number after the > is the feature ID, which can be located :
 
+        >128941808 Mayberry_contig_91_7252045_length_5790_multi_2_in_0_out_0_2
+        Length=750
 
+        Score = 285 bits (315),  Expect = 7e-72
+        Identities = 513/742 (69%), Gaps = 16/742 (2%)
+        Strand=Plus/Plus
 
-class BLASTFileText():
-    '''For parsing BLAST output files from ggKbase.
-    Example BLAST entry looks like this. The first number after the > is the feature ID, which can be located :
+        The query entries look like:
 
-    >128941808 Mayberry_contig_91_7252045_length_5790_multi_2_in_0_out_0_2
-    Length=750
+        Query= Final_SR-
+        VP_05_06_2024_coassembly_19kb_linear_ECE_26_1334_complete_38
 
-    Score = 285 bits (315),  Expect = 7e-72
-    Identities = 513/742 (69%), Gaps = 16/742 (2%)
-    Strand=Plus/Plus
-
-    The entire alignment is also included, but I don't think this is needed.
-    Also relevant is the query line, e.g.:
-
-    Query= Final_SR-
-    VP_05_06_2024_coassembly_19kb_linear_ECE_26_1334_complete_38
-
-    Length=297
-    '''
-
-    def __init__(self, path:str=None, df:pd.DataFrame=None):
-        self.df = df 
-        self.path = path 
-        self.file_name = os.path.basename(path) 
-
-
-    @classmethod
-    def from_file(cls, path:str):
+        Length=297
+        '''
 
         patterns = [r'>(?P<feature_number>\d+) (?P<feature_id>[^\n]+)']
         patterns += [r'Length=(?P<subject_length>\d+)']
@@ -106,40 +88,63 @@ class BLASTFileText():
 
         with open(path, 'r') as f:
             content = f.read()
+            
+        # print(f"BLASTFile._from_ggkbase_text_file: Found {content.count('Query=')} query entries in the file.")
 
-        query_info_pattern = r'Query=\s*((?P<query_id>.+))\n\nLength=(?P<query_length>\d+)'
-        query_info = re.search(query_info_pattern, content, flags=re.DOTALL|re.MULTILINE).groupdict()
-        
-        # Strip any (id=...) stuff tagged on to the query ID. 
-        query_info['query_id'] = re.sub(r'\(.*\)', '', query_info['query_id'])
-        # print(re.search(query_info_pattern, content, flags=re.DOTALL|re.MULTILINE).groupdict())
-        query_info['query_id'] = query_info['query_id'].replace('\n', '').replace(' ', '')
+        query_info_pattern = r'Query=\s*(?P<query_id>.+?)\n\nLength=(?P<query_length>\d+)' # Make sure the first match is non-greedy.
 
-        # Make sure to use .+? so the match is lazy, not greedy. 
-        # (?:>|Lambda) is a non-capturing group. 
+        queries = list(re.finditer(query_info_pattern, content, flags=re.DOTALL|re.MULTILINE))
+        print(f'BLASTFile._from_ggkbase_text_file: Found {len(queries)} query entries in the file.')
+
         df = list()
-        n = 0
-        for hit in re.findall(r'(?=>)(.*?)(?=^>|Lambda)', content, flags=re.MULTILINE|re.DOTALL):
-            if len(hit) == 0: # Gets empty strings for some reason.
-                continue
-            row = dict()
-            for pattern in patterns:
-                match_ = re.search(pattern, hit, flags=re.DOTALL)
-                if match_ is not None:
-                    row.update(match_.groupdict())
-            n += 1
-            df.append(row)
+        for i, query in enumerate(queries):
+
+            start, end = query.end(), queries[i + 1].start() if ((i + 1) < len(queries)) else -1
+            content_ = content[start:end]
+            content_ = re.sub(r'Lambda.*', '', content_, flags=re.DOTALL) # remove the extra data at the end of the chunk. 
+
+            query_info = query.groupdict()
+            query_info['query_id'] = re.sub(r'\(.*\)', '', query_info['query_id'])  # Strip any (id=...) stuff tagged on to the query ID. 
+            query_info['query_id'] = query_info['query_id'].replace('\n', '').replace(' ', '')         
+  
+
+            for target in re.findall(r'(?=>)(.*?)(?=^>)', content_, flags=re.MULTILINE|re.DOTALL):  # Make sure to use .+? so the match is lazy, not greedy. 
+                if len(target) == 0: # Gets empty strings for some reason.
+                    continue
+
+                row = query_info.copy()
+                for pattern in patterns:
+                    match_ = re.search(pattern, target, flags=re.DOTALL)
+                    if match_ is not None:
+                        row.update(match_.groupdict())
+                df.append(row)
+
+
         df = pd.DataFrame(df)
         df['percent_identity'] = df.n_identical.astype(int) / df.alignment_length.astype(int)
-        df['query_id'] = query_info['query_id']
-        df['query_length'] = query_info['query_length']
-        
-        # print(f'BLASTFileGgKbase.from_file: Found {n} subjects in the BLAST file {path}.')
-        return cls(path=path, df=df)
-    
-    def to_df(self):
-        df = self.df.copy()
+
         cols = [col for col in df.columns if ('length' in col)]
         for col in ['bit_score', 'n_gaps', 'n_identical', 'e_value'] + cols:
             df[col] = df[col].apply(pd.to_numeric)
-        return df
+
+        return df 
+
+
+    @classmethod
+    def from_file(cls, path:str, format:str=None):
+
+        format = os.path.splitext(os.path.basename(path))[-1] if (format is None) else format
+        format = format.replace('.', '').lower() # Remove any dots or capital letters in the file extension. 
+        assert format in ['txt', 'json'], 'BLASTFile.from_file: File format {format} is not supported. Must be one of ' + str(['txt', 'json'])
+
+        parser = BLASTFile._from_ggkbase_text_file if (format == 'txt') else BLASTFile._from_json_file
+        df = parser(path)
+
+        obj = cls()
+        obj.df = df 
+        obj.path = os.path.abspath(path)
+        return obj
+
+    def to_df(self):
+        return self.df.copy()
+

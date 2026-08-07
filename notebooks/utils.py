@@ -34,6 +34,50 @@ import json
 
 import matplotlib.pyplot as plt
 from cycler import cycler
+from datetime import date
+
+today = date.today().strftime("%m%d%Y")
+
+
+def get_alphafold_metadata(paths:str, output_path:str=None) -> pd.DataFrame:
+    '''
+    '''
+    if (output_path is not None) and os.path.exists(output_path):
+        return pd.read_csv(output_path)
+    
+    df = list() 
+    for path in paths:
+
+        try:
+            output = AlphaFoldOutput(path)
+        except Exception as err:
+            print(f'get_alphafold_metadata: Problem loading output at {path}, {err}')
+            continue 
+
+        assert output.get_num_proteins() == 1, f'get_alphafold_metadata: Expected 1 unique protein per structure, but got {output.get_num_proteins()} in {path}'
+
+        row = dict()
+        row['path'] = os.path.abspath(path)
+        row['name'] = output.name 
+        row['msa_unpaired_num_seqs'] = output.get_msas()[0]['unpaired'].count('>') - 1
+        row['msa_paired_num_seqs'] = output.get_msas()[0]['unpaired'].count('>') - 1
+        row['iptms'] = list(output.get_iptms(mean_pool=False).values())
+        row['ptms'] = list(output.get_ptms(mean_pool=False).values())
+        row['best_model'] = output.best_model
+        row['iptm_best_model'] = list(output.get_iptms(mean_pool=False, models=[output.best_model]).values())[0]
+        row['ptm_best_model'] = list(output.get_ptms(mean_pool=False, models=[output.best_model]).values())[0]
+        row['name'] = output.name 
+        row['num_seeds'] = len(output.data['modelSeeds'])
+        row['num_protein_chains'] = output.get_num_protein_chains()
+        row['num_proteins'] = output.get_num_protein_chains()
+        df.append(row)
+
+    df = pd.DataFrame(df)
+
+    if (output_path is not None):
+        df.to_csv(output_path, index=False)
+
+    return df
 
 # Functions for JSON parsing. 
 # -------------------------------------------------------------------------------------------------------------------------------------------------

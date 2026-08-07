@@ -14,7 +14,7 @@ for n in range(1, 3):
         CHAIN_IDS.append(''.join(chain_id[::-1]))
 
 
-def load_json(path):
+def load_json(path, errors:str='raise'):
     '''Read a JSON file from the input path using the faster orjson parser. '''
     try:
         with open(path, 'rb') as f:
@@ -22,9 +22,12 @@ def load_json(path):
             data = orjson.loads(data)
         return data
     except Exception as err:
-        print(f'load_json: Could not decode {path}, {err.msg}')
-        print(data)
-        return None
+        message = f'load_json: Could not decode {path}, {err}'
+        if (errors == 'raise'):
+            Exception(message)
+        elif (errors == 'ignore'):
+            print(message)
+            return None
 
 
 # https://github.com/google-deepmind/alphafold3/blob/main/docs/input
@@ -178,13 +181,22 @@ class AlphaFoldOutput():
 
 
 
-    def get_token_chain_ids(self):
+    def get_token_chain_ids(self, protein_chains_only:bool=False):
         '''Get the token chain IDs from the full data output. This is a list of strings indicating which chain each position in a matrix (e.g. 
-        the PAE matrix) belongs to.'''
+        the PAE matrix) belongs to.
+        
+        :param protein_chains_only: 
+        '''
         # Load the full data for each model; these SHOULD be the same across models, but load them all just to be safe.
         token_chain_ids = np.array([load_json(paths['full'])['token_chain_ids'] for paths in self.confidences.values()])
         assert np.all(np.expand_dims(token_chain_ids[0], axis=0) == token_chain_ids), 'AlphaFoldOutput.get_token_chain_ids: Token chain IDs are inconsistent.'
-        return token_chain_ids[0]
+        token_chain_ids = token_chain_ids[0] # After confirming all are equal, just grab the first set. 
+
+        if protein_chains_only:
+            protein_chain_ids = self.get_protein_chain_ids()
+            token_chain_ids = token_chain_ids[np.isin(token_chain_ids, protein_chain_ids)]
+
+        return token_chain_ids
     
     def _get_summary_data(self, field:str='iptm', mean_pool:bool=False, models:list=None):
         '''
@@ -207,13 +219,16 @@ class AlphaFoldOutput():
         '''
         
         '''
+
         assert field in ['contact_probs', 'pae'], f'AlphaFoldOutput._get_full_data: Input field {field} is not recognized.'
+        models = list(self.confidences.keys()) if (models is None) else models
         token_chain_ids = self.get_token_chain_ids()
         # Get the confidence data for the specified models (or all models if none are specified).
-        data = {model:load_json(paths['full'])[field] for model, paths in self.confidences.items() if ((model is None) or (model in models))}
+        data = {model:load_json(paths['full'])[field] for model, paths in self.confidences.items() if (model in models)}
 
         if mean_pool:
             data = np.mean(list(data.values()), axis=0)
+            assert len(data.shape) == 2, f'AlphaFoldOutput._get_full_data: Expected the mean-pooled data to be two-dimensional, but it is {len(data.shape)} dimensions.'
             return pd.DataFrame(data, index=token_chain_ids, columns=token_chain_ids)
         else: # Convert each individual matrix to DataFrames at the end if not mean pooling. 
             data = {model:pd.DataFrame(data_, index=token_chain_ids, columns=token_chain_ids) for model, data_ in data.items()}
@@ -223,28 +238,53 @@ class AlphaFoldOutput():
     def get_contact_probs(self, mean_pool:bool=True, models:list=None):
         return self._get_full_data(field='contact_probs', mean_pool=mean_pool, models=models)   
     
-    def get_paes(self, mean_pool:bool=True, models:list=None):
-        return self._get_full_data(field='pae', mean_pool=mean_pool, models=models)
+    
+    def get_paes(self, mean_pool:bool=True, models:list=None, protein_chains_only:bool=False):
+        paes = self._get_full_data(field='pae', mean_pool=mean_pool, models=models)
 
+        if protein_chains_only:
+
+            protein_chain_ids = self.get_protein_chain_ids()
+            token_chain_ids = self.get_token_chain_ids()
+
+            idxs = np.where(np.isin(token_chain_ids, protein_chain_ids))[0]
+            # print(f'AlphaFoldOutput: {len(idxs)} out of {len(token_chain_ids)} tokens belong to protein chains.')
+            if isinstance(paes, dict):
+                paes = {model:df.iloc[idxs, idxs].copy() for model, df in paes.items()}
+            elif isinstance(paes, pd.DataFrame):
+                paes = paes.iloc[idxs, idxs]
+                assert len(paes.shape) == 2, f'AlphaFoldOutput.get_paes: Expected the mean-pooled data to be two-dimensional, but it is {len(paes.shape)} dimensions.'
+            else:
+                raise Exception(f'AlphaFoldOutput.get_paes: Whatever was returned by _get_full_data has an unexpected type, {type(paes)}')
+
+        return paes
 
     def get_protein_chain_ids(self):
         '''Obtain the chains corresponding to actual protein sequences (not ligands or DNA) using the data.json file.'''
-        protein_chain_ids = list()
-        for entry in self.data['sequences']:
-            if 'protein' in entry:
-                protein_chain_ids += entry['protein']['id']
-        return protein_chain_ids
+        chain_ids = [entry['id'] for entry in self.get_proteins()]
+        return list(np.ravel(chain_ids))
 
-    def get_msas(self):
+    def get_proteins(self):
+        '''Obtain the protein sequences stored in the AlphaFold output data.json file.'''
+        return [entry['protein'] for entry in self.data['sequences'] if ('protein' in entry)]
 
+    def get_num_proteins(self) -> int:
+        return len(self.get_proteins())
+
+    def get_num_protein_chains(self) -> int:
+        return len(self.get_protein_chain_ids())
+
+    def get_msas(self) -> list:
+        '''
+        :returns: A list of dicts, with one dict per unique protein in the AlphaFold structure. 
+        '''
         msas = list()
 
-        for entry in self.data['sequences']:
-            if 'protein' in entry:
-                msa = dict()
-                msa['paired'] = entry['protein'].get('pairedMsa', '')
-                msa['unpaired'] = entry['protein'].get('unpairedMsa', '')
-                msas.append(msa)
+        for entry in self.get_proteins():
+            msa = dict()
+            msa['paired'] = entry.get('pairedMsa', '')
+            msa['unpaired'] = entry.get('unpairedMsa', '')
+            msas.append(msa)
 
         return msas
 
