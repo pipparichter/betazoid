@@ -1,16 +1,20 @@
 import sys 
 sys.path.append('/home/prichter/Documents/banfield/betazoid/src/files/')
 sys.path.append('/home/prichter/Documents/banfield/betazoid/src/')
+sys.path.append('/home/prichter/Documents/banfield/betazoid/scripts/')
 
 from fasta import FASTAFile
 from tmhmm import TMHMMFile
 from gfa import GFAFile
+from msa import MSAFile
 from bam import BamFile
 from dssp import DSSPFile
 from alphafold import AlphaFoldInputFile, AlphaFoldOutput, AlphaFoldServerOutput
+from colabfold import ColabFoldOutput
 from blast import BLASTFile
 from files.pdb import PDBFile, cif_to_pdb, sph_to_pdb, ATOMS
 import orjson
+import ast
 
 import os 
 import re 
@@ -24,7 +28,6 @@ from scipy.stats import gmean
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
-from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import LinearSegmentedColormap, to_hex
 from Bio.Seq import Seq
 from Bio.Align import PairwiseAligner 
@@ -39,37 +42,76 @@ from datetime import date
 today = date.today().strftime("%m%d%Y")
 
 
-def get_alphafold_metadata(paths:str, output_path:str=None) -> pd.DataFrame:
+REDUCED_ALPHABET = {'A':'A', 'V':'A', 'L':'A', 'I':'A', 'M':'A', 'F':'R', 'W':'R','Y':'R','K':'+','R':'+','H':'+','D':'-','E':'-','S':'P','T':'P','N':'P','Q':'P','G':'G','P':'P','C':'C', '.':'.'}
+
+
+
+def get_msas_unpaired(gene_ids:list, dir_path:str='../data/genes/mmseqs/'):
+    '''Load the unpaired MSAs for the specified gene IDs.
+    
+    :param gene_ids: The IDs of the genes to construct paired MSAs for. These should all be from the same genome.   
+    :param dir_path: The path to the directory where the MSAs are stored. This function assumes the a3m files have names matching the gene ID of the query 
+        sequence. 
     '''
+    paths = {gene_id:os.path.join(dir_path, f'{gene_id}.a3m') for gene_id in gene_ids}
+    return {gene_id:str(FASTAFile.from_file(path)) for gene_id, path in paths.items()}
+
+
+ 
+def map_dssp_to_msa(msa, dssp_output_dir:str='../data/genes/dssp/'):
+    '''Read in the DSSP results and map the structure codes to the MSAFile object.
+    
+    :param msa: An MSAFile object loaded from an afa file.
+    :param dddp_output_dir: The directory where the DSSP output is written.
+    :returns: A new MSAFile object with the amino acids replaced by DSSP structure codes. 
+    '''
+
+    ids, arr = list(), list()
+    for gene_id, map_idxs in msa.get_map_idxs().items():
+        path = os.path.join(dssp_output_dir, f'{gene_id}.dssp') # Expects the files to be named according to the gene ID. 
+        row = np.array(list(str(DSSPFile.from_file(path))) + ['.'])
+        arr.append(row[map_idxs])
+        ids.append(gene_id)
+        
+    return MSAFile.from_array(arr, ids)
+
+
+def get_fold_metadata(paths:str, output_path:str=None, parser=AlphaFoldOutput) -> pd.DataFrame:
+    '''Collect metadata about the AlphaFold or ColabFoldjobs stored at the given paths in a pandas DataFrame. 
+
+    :param paths: A list of paths specifying the output location. For AlphaFoldOutputs, this is a directory name. For
+        ColabFold outputs, which are not organized into directories, this is a file prefix.
+    :param output_path:
+    :param parser:
     '''
     if (output_path is not None) and os.path.exists(output_path):
-        return pd.read_csv(output_path)
+        df = pd.read_csv(output_path)
+        df['iptms'] = df.iptms.apply(ast.literal_eval) # The list of ipTMS gets stored as a string, so need to convert to a list. 
+        df['ptms'] = df.ptms.apply(ast.literal_eval) # The list of pTMS gets stored as a string, so need to convert to a list. 
+        return df 
     
     df = list() 
-    for path in paths:
+    for path in tqdm(paths, desc='get_fold_metadata'):
 
-        try:
-            output = AlphaFoldOutput(path)
-        except Exception as err:
-            print(f'get_alphafold_metadata: Problem loading output at {path}, {err}')
-            continue 
-
-        assert output.get_num_proteins() == 1, f'get_alphafold_metadata: Expected 1 unique protein per structure, but got {output.get_num_proteins()} in {path}'
+        output = parser(path)
+        assert output.get_num_proteins() == 1, f'get_fold_metadata: Expected 1 unique protein per structure, but got {output.get_num_proteins()} in {path}'
 
         row = dict()
         row['path'] = os.path.abspath(path)
         row['name'] = output.name 
-        row['msa_unpaired_num_seqs'] = output.get_msas()[0]['unpaired'].count('>') - 1
-        row['msa_paired_num_seqs'] = output.get_msas()[0]['unpaired'].count('>') - 1
+        row['msa_num_seqs'] = output.get_msas()[0].get('unpaired', '').count('>')
         row['iptms'] = list(output.get_iptms(mean_pool=False).values())
         row['ptms'] = list(output.get_ptms(mean_pool=False).values())
         row['best_model'] = output.best_model
-        row['iptm_best_model'] = list(output.get_iptms(mean_pool=False, models=[output.best_model]).values())[0]
-        row['ptm_best_model'] = list(output.get_ptms(mean_pool=False, models=[output.best_model]).values())[0]
-        row['name'] = output.name 
-        row['num_seeds'] = len(output.data['modelSeeds'])
+        row['iptm_best_model'] = output.get_iptms(best_model=True)
+        row['ptm_best_model'] = output.get_ptms(best_model=True)
+        row['num_seeds'] = output.get_num_seeds()
         row['num_protein_chains'] = output.get_num_protein_chains()
-        row['num_proteins'] = output.get_num_protein_chains()
+        row['num_proteins'] = output.get_num_proteins()
+
+        if isinstance(output, ColabFoldOutput):
+            row.update(output.get_msa_metadata()[0])
+
         df.append(row)
 
     df = pd.DataFrame(df)
@@ -138,79 +180,79 @@ def load_colabfold_plddts(path:str='../data/genes/colabfold/scores.json', gene_i
     return plddts
 
 
-# Functions for analyzing interfaces in multi-chain AlphaFold structures. 
-# -------------------------------------------------------------------------------------------------------------------------------------------------
+# # Functions for analyzing interfaces in multi-chain AlphaFold structures. 
+# # -------------------------------------------------------------------------------------------------------------------------------------------------
 
-def get_interfaces(contact_probs_df:np.ndarray, min_contact_prob=0.5):
-    '''Use the contact_probs in the AlphaFold output to locate potential inter-chain residue contacts.
+# def get_interfaces(contact_probs_df:np.ndarray, min_contact_prob=0.5):
+#     '''Use the contact_probs in the AlphaFold output to locate potential inter-chain residue contacts.
     
-    :param contact_probs_df: A square DataFrame containing the contact_probs for a given structure. 
-    :param min_contact_prob: The minimum contact_prob to say whether or not two residues are likely to be in contact. 
-    :returns: A two-tuple containing (1) the number of predicted contacts and (2) a square DataFrame containing boolean
-        values indicating the interface contacts. 
-    '''
-    token_chain_ids = contact_probs_df.index.to_numpy()
-    mask = (contact_probs_df.values > min_contact_prob) # Require a minimum contact probability. 
-    mask = mask & (np.expand_dims(token_chain_ids, axis=1) != token_chain_ids)  # Don't include intra-chain contacts. 
-    # print(f'get_interfaces: {mask.sum().sum()} inter-chain residues predicted to be in contact.')
-    return mask.ravel().sum(), pd.DataFrame(mask, index=token_chain_ids, columns=token_chain_ids)
+#     :param contact_probs_df: A square DataFrame containing the contact_probs for a given structure. 
+#     :param min_contact_prob: The minimum contact_prob to say whether or not two residues are likely to be in contact. 
+#     :returns: A two-tuple containing (1) the number of predicted contacts and (2) a square DataFrame containing boolean
+#         values indicating the interface contacts. 
+#     '''
+#     token_chain_ids = contact_probs_df.index.to_numpy()
+#     mask = (contact_probs_df.values > min_contact_prob) # Require a minimum contact probability. 
+#     mask = mask & (np.expand_dims(token_chain_ids, axis=1) != token_chain_ids)  # Don't include intra-chain contacts. 
+#     # print(f'get_interfaces: {mask.sum().sum()} inter-chain residues predicted to be in contact.')
+#     return mask.ravel().sum(), pd.DataFrame(mask, index=token_chain_ids, columns=token_chain_ids)
 
 
-def get_interface(contact_probs_df, chain_ids=['A', 'B'], min_contact_prob:float=0.5):
-    '''Get the interface specifically between the two specified chains.
+# def get_interface(contact_probs_df, chain_ids=['A', 'B'], min_contact_prob:float=0.5):
+#     '''Get the interface specifically between the two specified chains.
     
-    :param contact_probs_df: A square DataFrame containing the contact_probs for a given structure. 
-    :param chain_ids: The IDs for the chains to find the interface between. No more than two chains are expected. 
-    :param min_contact_prob: The minimum contact_prob to say whether or not two residues are likely to be in contact. 
-    :returns: A square DataFrame containing boolean values indicating the interface contacts. 
-    ''' 
-    assert len(chain_ids) == 2, f'get_interface: Expected two chains, but got {len(chain_ids)}.'
-    df = get_interfaces(contact_probs_df, min_contact_prob=min_contact_prob)[1] # Get all interface contacts. 
-    mask = (df.index.values == chain_ids[0]).reshape(-1, 1) & (df.columns.values == chain_ids[1])
-    mask = mask & (df.values) # Also make sure the residues are in contact. 
-    n = mask.sum(axis=None)
-    # print(f'get_interface: Found {n} residues at the interface of chains {chain_ids[0]} and {chain_ids[1]}.')
-    return mask 
+#     :param contact_probs_df: A square DataFrame containing the contact_probs for a given structure. 
+#     :param chain_ids: The IDs for the chains to find the interface between. No more than two chains are expected. 
+#     :param min_contact_prob: The minimum contact_prob to say whether or not two residues are likely to be in contact. 
+#     :returns: A square DataFrame containing boolean values indicating the interface contacts. 
+#     ''' 
+#     assert len(chain_ids) == 2, f'get_interface: Expected two chains, but got {len(chain_ids)}.'
+#     df = get_interfaces(contact_probs_df, min_contact_prob=min_contact_prob)[1] # Get all interface contacts. 
+#     mask = (df.index.values == chain_ids[0]).reshape(-1, 1) & (df.columns.values == chain_ids[1])
+#     mask = mask & (df.values) # Also make sure the residues are in contact. 
+#     n = mask.sum(axis=None)
+#     # print(f'get_interface: Found {n} residues at the interface of chains {chain_ids[0]} and {chain_ids[1]}.')
+#     return mask 
 
 
-def has_interface(contact_probs_df, chain_ids=None, min_contact_prob:float=0.5):
-    '''
+# def has_interface(contact_probs_df, chain_ids=None, min_contact_prob:float=0.5):
+#     '''
 
-    :param contact_probs_df: A square DataFrame containing the contact_probs for a given structure. 
-    :param chain_ids: The IDs for the chains to find the interface between. No more than two chains are expected. 
-    :param min_contact_prob: The minimum contact_prob to say whether or not two residues are likely to be in contact. 
-    :returns: A two-tuple with the first element being the number of predicted contacts at the specified threshold, and the second element
-        being a boolean indicating whether or not the two chains are in contact. 
-    '''
-    mask = get_interface(contact_probs_df, chain_ids=chain_ids, min_contact_prob=min_contact_prob)
-    n = mask.sum(axis=None)
-    return n, n > 0
+#     :param contact_probs_df: A square DataFrame containing the contact_probs for a given structure. 
+#     :param chain_ids: The IDs for the chains to find the interface between. No more than two chains are expected. 
+#     :param min_contact_prob: The minimum contact_prob to say whether or not two residues are likely to be in contact. 
+#     :returns: A two-tuple with the first element being the number of predicted contacts at the specified threshold, and the second element
+#         being a boolean indicating whether or not the two chains are in contact. 
+#     '''
+#     mask = get_interface(contact_probs_df, chain_ids=chain_ids, min_contact_prob=min_contact_prob)
+#     n = mask.sum(axis=None)
+#     return n, n > 0
 
 
-def get_interface_idxs(contact_probs_df, chain_ids=['A', 'B'], min_contact_prob:float=0.5, shift:bool=True):
-    '''Get the indices of the residues in the two specified chains participating in an interface.
+# def get_interface_idxs(contact_probs_df, chain_ids=['A', 'B'], min_contact_prob:float=0.5, shift:bool=True):
+#     '''Get the indices of the residues in the two specified chains participating in an interface.
     
-    :param contact_probs_df: A square DataFrame containing the contact_probs for a given structure. 
-    :param chain_ids: The IDs for the chains to find the interface between. No more than two chains are expected. 
-    :param min_contact_prob: The minimum contact_prob to say whether or not two residues are likely to be in contact. 
-    '''
-    token_chain_ids = contact_probs_df.index.values # Get the token chain IDs from the interface DataFrame. 
+#     :param contact_probs_df: A square DataFrame containing the contact_probs for a given structure. 
+#     :param chain_ids: The IDs for the chains to find the interface between. No more than two chains are expected. 
+#     :param min_contact_prob: The minimum contact_prob to say whether or not two residues are likely to be in contact. 
+#     '''
+#     token_chain_ids = contact_probs_df.index.values # Get the token chain IDs from the interface DataFrame. 
 
-    # def _shift_idxs(idxs:np.ndarray, chain_id:str='A'):
-    #     delta = np.where(token_chain_ids == chain_id)[0][0] # Get the first occurrence of the chain ID. 
-    #     return idxs - delta # Subtract the shift from the indices. 
+#     # def _shift_idxs(idxs:np.ndarray, chain_id:str='A'):
+#     #     delta = np.where(token_chain_ids == chain_id)[0][0] # Get the first occurrence of the chain ID. 
+#     #     return idxs - delta # Subtract the shift from the indices. 
 
-    def _get_shift(chain_id:str):
-        return np.where(token_chain_ids == chain_id)[0][0] # Get the first occurrence of the chain ID. 
+#     def _get_shift(chain_id:str):
+#         return np.where(token_chain_ids == chain_id)[0][0] # Get the first occurrence of the chain ID. 
 
-    mask = get_interface(contact_probs_df, chain_ids=chain_ids, min_contact_prob=min_contact_prob)
-    idxs =  dict(zip(chain_ids, np.where(mask)))
-    shifts = {chain_id:_get_shift(chain_id) for chain_id in chain_ids}
+#     mask = get_interface(contact_probs_df, chain_ids=chain_ids, min_contact_prob=min_contact_prob)
+#     idxs =  dict(zip(chain_ids, np.where(mask)))
+#     shifts = {chain_id:_get_shift(chain_id) for chain_id in chain_ids}
     
-    if shift:
-        return idxs, {chain_id:idxs_ - shifts[chain_id] for chain_id, idxs_ in idxs.items()}
-    else:
-        return idxs
+#     if shift:
+#         return idxs, {chain_id:idxs_ - shifts[chain_id] for chain_id, idxs_ in idxs.items()}
+#     else:
+#         return idxs
 # -------------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -257,6 +299,7 @@ def get_pairwise_alignments(seqs, mode:str='global', metric='identities', normal
     
     :param seqs: pd.Series containing the sequences to compare.
     :param mode: The alignment mode, either local or global. The mode is global by default. 
+
     '''
     n = len(seqs)
     df = pd.DataFrame(np.zeros((n, n)), columns=seqs.index, index=seqs.index)
@@ -276,128 +319,6 @@ def get_pairwise_alignments(seqs, mode:str='global', metric='identities', normal
     return df
 
 
-
-REDUCED_ALPHABET = {'A':'A', 'V':'A', 'L':'A', 'I':'A', 'M':'A', 'F':'R', 'W':'R','Y':'R','K':'+','R':'+','H':'+','D':'-','E':'-','S':'P','T':'P','N':'P','Q':'P','G':'G','P':'P','C':'C', '.':'.'}
-
-# ! muscle -align ../data/genes/cluster_1.fa -output ../data/genes/cluster_1.afa
-class MSA():
-    gap_symbol = '.'
-    def __init__(self, arr, ids):
-
-        self.ids = ids 
-        self.arr = arr 
-        self.seqs = np.array([''.join(row) for row in arr])
-        self.n_cols = arr.shape[-1]
-
-    @classmethod
-    def from_file(cls, path:str='../data/genes/cluster_1.afa'):
-
-        df = FASTAFile.from_file(path).to_df()
-        # print(df)
-        ids, arr = df.index.values, np.array([list(seq.replace('-', MSA.gap_symbol)) for seq in df.seq])
-        return MSA.from_array(arr, ids) 
-
-    @classmethod
-    def from_string(cls, content:str, af3:bool=True):
-        f = io.StringIO(content)
-        records = [record for record in SeqIO.parse(f, 'fasta')]
-        ids = [record.id for record in records]
-
-        seqs = [str(record.seq).replace('-', MSA.gap_symbol) for record in records]
-        if af3: # AF3 format is different, contains lowercase characters to indicate insertions relative to the query.
-            seqs = [re.sub(r'[a-z]', '', seq) for seq in seqs]
-        n_cols, n_rows = len(seqs[0]), len(seqs)
-        arr = np.array([list(seq) for seq in seqs])
-        return cls(arr, ids)
-
-    def __len__(self):
-        return len(self.ids)
-    
-    def __getitem__(self, id_):
-        assert id_ in self.ids, f'MSA.__getitem__: ID {id_} is missing in the MSA.'
-        return self.seqs[self.ids == id_][0]
-    
-    def to_array(self, alphabet:dict=None):
-        '''Convert the MSA loaded from the FASTA file into a two-dimensional numpy array, where each entry is a single residue.'''
-        return np.vectorize(alphabet.get)(self.arr.copy()) if (alphabet is not None) else self.arr.copy()
-    
-    def to_df(self, alphabet:dict=None):
-        df = pd.DataFrame(index=self.ids)
-        df['seq'] = self.seqs
-        df['seq'] = df.seq.str.replace(alphabet) if (alphabet is not None) else df['seq']
-        return df        
-    
-    def map_idx_from_msa(self, idx, gene_id:str):
-        '''Convert the index of a residue in the MSA to the index of a residue in one of the aligned sequences.'''
-        seq = self[gene_id]
-        assert seq[idx] != MSA.gap_symbol, f'get_idx: The input index corresponds to a gap in the aligned {gene_id}.'
-        n_gaps = seq[:idx].count(MSA.gap_symbol) # Get the number of gaps which occur before the requested index.
-        return idx - n_gaps
-    
-    def map_idx_to_msa(self, idx, gene_id:str):
-        '''Convert the index of a residue in one of the sequences to an index in the MSA.'''
-        n, n_gaps = 0, 0
-        for aa in self[gene_id]:
-            if (n == idx) and (aa != MSA.gap_symbol):
-                break # So that it doesn't exit if idx = 0 and the first symbol is a gap. 
-            n += int(aa != MSA.gap_symbol)
-            n_gaps += int(aa == MSA.gap_symbol)
-        return n + n_gaps
-    
-    @classmethod
-    def from_array(cls, arr, ids=None):
-        ids = np.arange(len(arr)) if (ids is None) else ids
-        arr = np.array(arr)
-        ids = np.array(ids)
-        return MSA(arr, ids)
-
-    def get_mean_gap_fraction(self):
-        return np.mean([np.mean(col == MSA.gap_symbol) for col in self.arr.T])
-
-
-    def get_consensus(self):
-        consensus = list()
-        for col in self.arr.T:
-            symbols, counts = np.unique(col, return_counts=True)
-            consensus.append(symbols[np.argsort(counts)][-1])
-        return np.array(consensus)
-
-    def show(self, start:int=None, stop:int=None):
-        start = 0 if (start is None) else start
-        stop = self.n_cols if (stop is None) else stop
-
-        for id_, seq in zip(self.ids, self.seqs):
-            print(f'{start}\t{seq[start:stop]}\t{stop}\t{id_}')
-
-    def get_map_idxs(self):
-        map_idxs = dict()
-        for id_, row in zip(self.ids, self.arr.copy()):
-            row_map_idxs  = np.zeros(len(row), dtype=int)
-            row_map_idxs[np.where(row != MSA.gap_symbol)[0]] = np.arange((row != MSA.gap_symbol).sum()) # Fill in the values with the ungapped index positions. 
-            row_map_idxs[np.where(row == MSA.gap_symbol)[0]] = -1
-            map_idxs[id_] = row_map_idxs
-        return map_idxs
-
-
-
-def plot_foldseek_search_coverage(msa:MSA, foldseek_search_df:pd.DataFrame):
-
-    fig, ax = plt.subplots(figsize=(5, 4))
-
-    figure_df = foldseek_search_df.copy()
-    # Get the indices relative to the MSA. 
-    figure_df['msa_start'] = figure_df.apply(lambda row : msa.map_idx_to_msa(row.qstart, getattr(row, 'query')), axis=1) 
-    figure_df['msa_stop'] = figure_df.apply(lambda row : msa.map_idx_to_msa(row.qend, getattr(row, 'query')), axis=1) 
-
-    positions = np.arange(msa.n_cols)
-    heights = np.zeros(len(positions))
-    for row in figure_df.itertuples():
-        heights[np.arange(row.msa_start, row.msa_stop)] += 1 
-
-    ax.bar(positions, heights, color='lightgray', lw=0, edgecolor='black')
-    ax.set_ylabel('num. Foldseek hits covering residue')
-    ax.set_xlabel('position')
-    plt.show()
 
 # def load_bin_analysis(path:str, gene_name='rps3', drop=['SR-VP_05_06_2024_coassembly']):
 #     '''Convert bin analysis output from wide-form to long-form data. Note that an rps3 sequence observed in multiple samples is identified according to a 

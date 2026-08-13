@@ -179,43 +179,50 @@ class AlphaFoldOutput():
         self.best_model_path = os.path.join(self.dir_path, self.best_model, 'model.cif')
         assert os.path.exists(self.best_model_path), f'AlphaFoldOutput.__init__: Best model path {self.best_model_path} does not exist.'
 
+    def get_num_seeds(self):
+        '''Get the number of seeds used for a single AlphaFold prediction.'''
+        return len(self.data['modelSeeds'])
+    
 
-
-    def get_token_chain_ids(self, protein_chains_only:bool=False):
+    def get_token_chain_ids(self, protein_chains:bool=False):
         '''Get the token chain IDs from the full data output. This is a list of strings indicating which chain each position in a matrix (e.g. 
         the PAE matrix) belongs to.
         
-        :param protein_chains_only: 
+        :param protein_chains: 
         '''
         # Load the full data for each model; these SHOULD be the same across models, but load them all just to be safe.
         token_chain_ids = np.array([load_json(paths['full'])['token_chain_ids'] for paths in self.confidences.values()])
         assert np.all(np.expand_dims(token_chain_ids[0], axis=0) == token_chain_ids), 'AlphaFoldOutput.get_token_chain_ids: Token chain IDs are inconsistent.'
         token_chain_ids = token_chain_ids[0] # After confirming all are equal, just grab the first set. 
 
-        if protein_chains_only:
+        if protein_chains:
             protein_chain_ids = self.get_protein_chain_ids()
             token_chain_ids = token_chain_ids[np.isin(token_chain_ids, protein_chain_ids)]
 
         return token_chain_ids
     
-    def _get_summary_data(self, field:str='iptm', mean_pool:bool=False, models:list=None):
+    def _get_summary_data(self, field:str='iptm', mean_pool:bool=False, models:list=None, best_model:bool=True):
         '''
         
         '''
-        models = list(self.confidences.keys()) if (models is None) else models
-        data = {model:load_json(paths['summary'])[field] for model, paths in self.confidences.items() if (model in models)}
-        if mean_pool:
-            data = np.mean(list(data.values()))
+        if best_model:
+            data = load_json(self.confidences[self.best_model]['summary'])[field]
+        else:
+            models = list(self.confidences.keys()) if (models is None) else models
+            data = {model:load_json(paths['summary'])[field] for model, paths in self.confidences.items() if (model in models)}
+            if mean_pool:
+                data = np.mean(list(data.values()))
         return data
 
-    def get_ptms(self, mean_pool:bool=False, models:list=None):
-        return self._get_summary_data('ptm', mean_pool=mean_pool, models=models)
 
-    def get_iptms(self, mean_pool:bool=False, models:list=None):
-        return self._get_summary_data('iptm', mean_pool=mean_pool, models=models)
+    def get_ptms(self, mean_pool:bool=False, models:list=None, best_model:bool=False):
+        return self._get_summary_data('ptm', mean_pool=mean_pool, models=models, best_model=best_model)
+
+    def get_iptms(self, mean_pool:bool=False, models:list=None, best_model:bool=False):
+        return self._get_summary_data('iptm', mean_pool=mean_pool, models=models, best_model=best_model)
 
 
-    def _get_full_data(self, field:str='contact_probs', mean_pool:bool=False, models:list=None):
+    def _get_full_data(self, field:str='contact_probs', mean_pool:bool=False, models:list=None, best_model:bool=False):
         '''
         
         '''
@@ -223,41 +230,46 @@ class AlphaFoldOutput():
         assert field in ['contact_probs', 'pae'], f'AlphaFoldOutput._get_full_data: Input field {field} is not recognized.'
         models = list(self.confidences.keys()) if (models is None) else models
         token_chain_ids = self.get_token_chain_ids()
-        # Get the confidence data for the specified models (or all models if none are specified).
-        data = {model:load_json(paths['full'])[field] for model, paths in self.confidences.items() if (model in models)}
 
-        if mean_pool:
-            data = np.mean(list(data.values()), axis=0)
-            assert len(data.shape) == 2, f'AlphaFoldOutput._get_full_data: Expected the mean-pooled data to be two-dimensional, but it is {len(data.shape)} dimensions.'
-            return pd.DataFrame(data, index=token_chain_ids, columns=token_chain_ids)
-        else: # Convert each individual matrix to DataFrames at the end if not mean pooling. 
-            data = {model:pd.DataFrame(data_, index=token_chain_ids, columns=token_chain_ids) for model, data_ in data.items()}
+        if best_model:
+            data = load_json(self.confidences[self.best_model]['full'])[field]
+            data = pd.DataFrame(data, index=token_chain_ids, columns=token_chain_ids)
+        else:
+            # Get the confidence data for the specified models (or all models if none are specified).
+            models = list(self.scores.keys()) if (models is None) else models
+            data = {model:load_json(paths['full'])[field] for model, paths in self.confidences.items() if (model in models)}
+
+            if mean_pool:
+                data = np.mean(list(data.values()), axis=0)
+                data = pd.DataFrame(data, index=token_chain_ids, columns=token_chain_ids)
+            else: # Convert each individual matrix to DataFrames at the end if not mean pooling. 
+                data = {model:pd.DataFrame(data_, index=token_chain_ids, columns=token_chain_ids) for model, data_ in data.items()} 
+
         return data
 
 
-    def get_contact_probs(self, mean_pool:bool=True, models:list=None):
-        return self._get_full_data(field='contact_probs', mean_pool=mean_pool, models=models)   
+    def get_contact_probs(self, mean_pool:bool=True, models:list=None, best_model:bool=False):
+        return self._get_full_data(field='contact_probs', mean_pool=mean_pool, models=models, best_model=best_model)   
     
     
-    def get_paes(self, mean_pool:bool=True, models:list=None, protein_chains_only:bool=False):
-        paes = self._get_full_data(field='pae', mean_pool=mean_pool, models=models)
+    def get_paes(self, mean_pool:bool=True, models:list=None, best_model:bool=False):
+        return self._get_full_data(field='pae', mean_pool=mean_pool, models=models, best_model=best_model)
 
-        if protein_chains_only:
 
-            protein_chain_ids = self.get_protein_chain_ids()
-            token_chain_ids = self.get_token_chain_ids()
+        # protein_chain_ids = self.get_protein_chain_ids()
+        # token_chain_ids = self.get_token_chain_ids()
 
-            idxs = np.where(np.isin(token_chain_ids, protein_chain_ids))[0]
-            # print(f'AlphaFoldOutput: {len(idxs)} out of {len(token_chain_ids)} tokens belong to protein chains.')
-            if isinstance(paes, dict):
-                paes = {model:df.iloc[idxs, idxs].copy() for model, df in paes.items()}
-            elif isinstance(paes, pd.DataFrame):
-                paes = paes.iloc[idxs, idxs]
-                assert len(paes.shape) == 2, f'AlphaFoldOutput.get_paes: Expected the mean-pooled data to be two-dimensional, but it is {len(paes.shape)} dimensions.'
-            else:
-                raise Exception(f'AlphaFoldOutput.get_paes: Whatever was returned by _get_full_data has an unexpected type, {type(paes)}')
+        # idxs = np.where(np.isin(token_chain_ids, protein_chain_ids))[0]
+        # # print(f'AlphaFoldOutput: {len(idxs)} out of {len(token_chain_ids)} tokens belong to protein chains.')
+        # if isinstance(paes, dict):
+        #     paes = {model:df.iloc[idxs, idxs].copy() for model, df in paes.items()}
+        # elif isinstance(paes, pd.DataFrame):
+        #     paes = paes.iloc[idxs, idxs]
+        #     assert len(paes.shape) == 2, f'AlphaFoldOutput.get_paes: Expected the mean-pooled data to be two-dimensional, but it is {len(paes.shape)} dimensions.'
+        # else:
+        #     raise Exception(f'AlphaFoldOutput.get_paes: Whatever was returned by _get_full_data has an unexpected type, {type(paes)}')
 
-        return paes
+        # return paes
 
     def get_protein_chain_ids(self):
         '''Obtain the chains corresponding to actual protein sequences (not ligands or DNA) using the data.json file.'''
@@ -275,7 +287,8 @@ class AlphaFoldOutput():
         return len(self.get_protein_chain_ids())
 
     def get_msas(self) -> list:
-        '''
+        '''Load the paired and unpaired MSAs used to generate the structures for all models. 
+
         :returns: A list of dicts, with one dict per unique protein in the AlphaFold structure. 
         '''
         msas = list()
@@ -343,6 +356,12 @@ class AlphaFoldServerOutput(AlphaFoldOutput):
         self.num_chains = len(self.inputs)
         self.chain_ids = self.inputs.chain_id.unique()
         self.best_model = self._get_best_model()
+        self.best_model_path = os.path.join(dir_path, f'{self.name}_model_{self.best_model}.cif')
+
+
+    def get_ranking_scores(self):
+        return self._get_summary_data('ranking_score', mean_pool=False)
+
 
 
     def get_chain_ids(self, type_:str='protein', group:bool=False):
@@ -379,26 +398,26 @@ class AlphaFoldServerOutput(AlphaFoldOutput):
         return list(msas.values()) # Make sure paired and unpaired for the same chains are associated here. 
 
 
-def get_interfaces(self, min_contact_prob=0.7, pairwise=True, chain_ids=None):
+# def get_interfaces(self, min_contact_prob=0.7, pairwise=True, chain_ids=None):
 
-    with open(path, 'r') as f:
-        data = json.load(f)
-        contact_probs = np.array(data['contact_probs'])
-        token_chain_ids = np.array(data['token_chain_ids'])
+#     with open(path, 'r') as f:
+#         data = json.load(f)
+#         contact_probs = np.array(data['contact_probs'])
+#         token_chain_ids = np.array(data['token_chain_ids'])
 
-    chain_ids = list(np.unique(token_chain_ids)) if (chain_ids is None) else chain_ids
+#     chain_ids = list(np.unique(token_chain_ids)) if (chain_ids is None) else chain_ids
 
-    mask = (contact_probs > min_contact_prob) # Require a minimum contact probability. 
-    mask = mask & (token_chain_ids.reshape(-1, 1) != token_chain_ids)  # Don't include intra-chain contacts. 
-    mask[np.tril_indices_from(mask, k=-1)] = False # Don't double-count pairwise interactions (remove everything below the diagonal)
+#     mask = (contact_probs > min_contact_prob) # Require a minimum contact probability. 
+#     mask = mask & (token_chain_ids.reshape(-1, 1) != token_chain_ids)  # Don't include intra-chain contacts. 
+#     mask[np.tril_indices_from(mask, k=-1)] = False # Don't double-count pairwise interactions (remove everything below the diagonal)
 
-    if pairwise:
-        masks = dict()
-        for chain_id_pair in itertools.product(chain_ids, chain_ids):
-            masks[chain_id_pair] = mask & (np.isin(token_chain_ids, chain_id_pair).reshape(-1, 1) & np.isin(token_chain_ids, chain_id_pair))
-        return masks
-    else:
-        return mask
+#     if pairwise:
+#         masks = dict()
+#         for chain_id_pair in itertools.product(chain_ids, chain_ids):
+#             masks[chain_id_pair] = mask & (np.isin(token_chain_ids, chain_id_pair).reshape(-1, 1) & np.isin(token_chain_ids, chain_id_pair))
+#         return masks
+#     else:
+#         return mask
 
 #     # Want to not consider intra-chain contacts. 
 

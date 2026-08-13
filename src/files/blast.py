@@ -9,24 +9,24 @@ import os
 class BLASTFile():
 
     field_map = dict()
-    field_map['accession'] = 'subject_id'
+    field_map['accession'] = 'target_id'
     field_map['query_title'] = 'id'
-    field_map['title'] = 'subject_description'
-    field_map['sciname'] = 'subject_taxon'
-    field_map['taxid'] = 'subject_taxonomy_id'
+    field_map['title'] = 'target_description'
+    field_map['sciname'] = 'target_taxon'
+    field_map['taxid'] = 'target_taxonomy_id'
     field_map['bit_score'] = 'bit_score'
     field_map['evalue'] = 'e_value'
-    field_map['identity'] = 'identity'
+    field_map['identity'] = 'n_identical'
     field_map['positive'] = 'positive'
-    field_map['hit_from'] = 'subject_alignment_start'
-    field_map['hit_to'] = 'subject_alignment_stop'
+    field_map['hit_from'] = 'target_alignment_start'
+    field_map['hit_to'] = 'target_alignment_stop'
     field_map['query_from'] = 'query_alignment_start'
     field_map['query_to'] = 'query_alignment_stop'
     field_map['gaps'] = 'n_gaps'
     field_map['align_len'] = 'alignment_length'
     field_map['qseq'] = 'query_seq'
-    field_map['hseq'] = 'subject_seq'
-    field_map['len'] = 'subject_length'
+    field_map['hseq'] = 'target_seq'
+    field_map['len'] = 'target_length'
     field_map['query_len'] = 'query_length'
     field_map['midline'] = 'alignment'
 
@@ -79,8 +79,8 @@ class BLASTFile():
         Length=297
         '''
 
-        patterns = [r'>(?P<feature_number>\d+) (?P<feature_id>[^\n]+)']
-        patterns += [r'Length=(?P<subject_length>\d+)']
+        patterns = [r'>(?P<target_numerical_id>\d+) (?P<target_id>[^\n]+)']
+        patterns += [r'Length=(?P<target_length>\d+)']
         patterns += [r'Score = (?P<bit_score>[\d\.]+) bits']
         patterns += [r'Expect = (?P<e_value>[e\-\.\d]+)']
         patterns += [r'Identities = (?P<n_identical>\d+)/(?P<alignment_length>\d+)']
