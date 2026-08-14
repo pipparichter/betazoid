@@ -62,15 +62,31 @@ class MSAFile():
         n_gaps = seq[:idx].count(MSAFile.gap_symbol) # Get the number of gaps which occur before the requested index.
         return idx - n_gaps
     
-    def map_idx_to_msa(self, idx, gene_id:str):
+    # Why doesn't this work? Because n + n_gaps is the total number of columns traversed, up until n == idx, so when n == idx, that
+    # means that idx number of columns have been traversed. However, we want the corresponding index in the MSA, which would be this value - 1. 
+
+    # def map_idx_to_msa(self, idx, gene_id:str):
+    #     '''Convert the index of a residue in one of the sequences to an index in the MSAFile.'''
+    #     n, n_gaps = 0, 0 # n is the number of non-gap characters encountered in the MSA. 
+    #     for aa in self[gene_id]: # Get the MSA row for the specified gene ID. 
+    #         if (n == idx) and (aa != MSAFile.gap_symbol):
+    #             break # So that it doesn't exit if idx = 0 and the first symbol is a gap. 
+    #         n += int(aa != MSAFile.gap_symbol) # Increment number of non-gaps encountered. 
+    #         n_gaps += int(aa == MSAFile.gap_symbol)
+    #     return n + n_gaps
+    
+    
+    def map_idx_to_msa(self, idx, gene_id: str):
         '''Convert the index of a residue in one of the sequences to an index in the MSAFile.'''
-        n, n_gaps = 0, 0
-        for aa in self[gene_id]:
-            if (n == idx) and (aa != MSAFile.gap_symbol):
-                break # So that it doesn't exit if idx = 0 and the first symbol is a gap. 
-            n += int(aa != MSAFile.gap_symbol)
-            n_gaps += int(aa == MSAFile.gap_symbol)
-        return n + n_gaps
+        seq_idx = 0
+
+        for msa_idx, aa in enumerate(self[gene_id]):
+            if aa != MSAFile.gap_symbol:
+                if seq_idx == idx:
+                    return msa_idx
+                seq_idx += 1 # Increment the sequence index only if there is not a gap symbol in the MSA.
+        
+
     
     @classmethod
     def from_array(cls, arr, ids=None):
@@ -107,3 +123,16 @@ class MSAFile():
         return map_idxs
 
 
+    def get_entropy(self, alphabet:dict=None, exclude_gaps:bool=False):
+
+        alphabet_size = 20 if (alphabet is None) else len(np.unique(list(alphabet.values())))
+
+        entropy = list()
+        for col in self.to_array(alphabet=alphabet).T:
+            if (exclude_gaps and (self.gap_symbol in col)):
+                entropy.append(np.nan)
+                continue 
+            _, counts = np.unique(col[col != self.gap_symbol], return_counts=True)
+            frequencies = counts / counts.sum()
+            entropy.append(sum(-(frequencies * np.log(frequencies) / np.log(alphabet_size))))
+        return np.array(entropy)
