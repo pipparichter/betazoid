@@ -91,14 +91,24 @@ class ColabFoldOutput():
             assert re.match(r'\d+', seed) is not None, f'ColabFoldOutput: Expected all seeds to be made up of integers, but got {seed}.'
         return len(seeds)
 
-    def get_num_proteins(self) -> int:
-        return 1
-    
-    def get_protein_chain_ids(self) -> list:
-        return ['A']
 
-    def get_num_protein_chains(self) -> int:
-        return len(self.get_protein_chain_ids())
+
+
+    def get_chain_id_to_chain_map(self, **kwargs):
+        '''
+        :returns: A dictionary mapping the protein chain ID to the sequence. 
+        '''
+        return {'A':self._get_chain()}
+
+    def get_chain_to_chain_id_map(self, **kwargs) -> dict:
+        '''
+        
+        :returns: A dictionary mapping each protein sequence to the corresponding chain IDs.'''
+        return {self._get_chain():['A']}
+
+
+    def get_chain_ids(self, **kwargs):
+        return ['A']
     
     def _get_score_data(self, field:str='pae', mean_pool:bool=False, models:list=None, best_model:bool=False):
         '''Obtain data from the scores file for each model. 
@@ -124,9 +134,11 @@ class ColabFoldOutput():
         models = list(self.scores.keys()) if (models is None) else models
         return {model:None for model in models}
 
-
     def get_paes(self, mean_pool:bool=False, models:list=None, best_model:bool=False):
         return self._get_score_data('pae', mean_pool=mean_pool, models=models, best_model=best_model)
+    
+    def get_plddts(self, mean_pool:bool=False, models:list=None, best_model:bool=False):
+        return self._get_score_data('plddt', mean_pool=mean_pool, models=models, best_model=best_model)
     
     def get_msa(self) -> str:
         with open(self.msa_path, 'r') as f:
@@ -142,6 +154,12 @@ class ColabFoldOutput():
         '''
         msa = self.get_msa()
         return [{'unpaired':msa}]
+
+    def _get_chain(self):
+        '''The only way to get the sequence out of the ColabFold ouput is to read it from the MSA.'''
+        msa = self.get_msa()
+        seqs = re.split(r'^>.*$', msa, flags=re.MULTILINE)
+        return seqs[0].replace('\n', '')
 
     def get_msa_metadata(self):
         '''Read and parse the headers of a ColabFold MSA file. These MSAs were constructed using MMseqs, and each header line contains 
@@ -159,7 +177,7 @@ class ColabFoldOutput():
 
         df = pd.DataFrame([dict(zip(fields, header.split())) for header in headers])
         if len(df.columns) == 1:
-            return {'msa':msa, 'msa_num_seqs':0}
+            return {'msa':msa, 'msa_num_seqs':0}, None
         df = df[~df.bit_score.isnull()].copy()
 
         metadata = dict()

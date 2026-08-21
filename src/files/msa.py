@@ -7,6 +7,25 @@ import glob
 import numpy as np 
 from fasta import FASTAFile
 
+
+def load_clipkit_log(path:str):
+    '''Load the clipkit log file stored at the specified path.'''
+    fields = ['idx', 'status', 'informative', 'gap_fraction']
+    df = pd.read_csv(path, sep=r' ', names=fields)
+    df['idx'] = df['idx'] - 1 # Make sure this is zero-indexed. 
+    return df
+
+    # If I want to map the MSA index back to the original sequence, I need to account for the dropped columns. 
+    # For example, if I am looking for the location of residue i in a sequence in the trimmed MSA, but n columns prior to 
+    # i have been removed, then the mapped index will be n positions too far to the right. 
+
+    # Actually, there is not enough information in the log file to map from the sequence to the MSA, because we don't know if the removed 
+    # column had a gap in the target sequence or was filled.  
+
+    # I will need to load the original file, get the index in that file, and then determine if the column was retained. 
+
+
+
 # ! muscle -align ../data/genes/cluster_1.fa -output ../data/genes/cluster_1.afa
 class MSAFile():
     gap_symbol = '.'
@@ -18,12 +37,17 @@ class MSAFile():
         self.n_cols = arr.shape[-1]
 
     @classmethod
-    def from_file(cls, path:str='../data/genes/cluster_1.afa'):
+    def from_file(cls, path:str='../data/genes/cluster_1.afa', clipkit_log_path:str=None):
 
         df = FASTAFile.from_file(path).to_df()
         # print(df)
         ids, arr = df.index.values, np.array([list(seq.replace('-', MSAFile.gap_symbol)) for seq in df.seq])
-        return MSAFile.from_array(arr, ids) 
+        obj = MSAFile.from_array(arr, ids) 
+
+        if clipkit_log_path is not None:
+            obj.clipkit_log_df = load_clipkit_log(clipkit_log_path)
+
+        return obj
 
     @classmethod
     def from_string(cls, content:str, af3:bool=True):
@@ -61,20 +85,7 @@ class MSAFile():
         assert seq[idx] != MSAFile.gap_symbol, f'get_idx: The input index corresponds to a gap in the aligned {gene_id}.'
         n_gaps = seq[:idx].count(MSAFile.gap_symbol) # Get the number of gaps which occur before the requested index.
         return idx - n_gaps
-    
-    # Why doesn't this work? Because n + n_gaps is the total number of columns traversed, up until n == idx, so when n == idx, that
-    # means that idx number of columns have been traversed. However, we want the corresponding index in the MSA, which would be this value - 1. 
 
-    # def map_idx_to_msa(self, idx, gene_id:str):
-    #     '''Convert the index of a residue in one of the sequences to an index in the MSAFile.'''
-    #     n, n_gaps = 0, 0 # n is the number of non-gap characters encountered in the MSA. 
-    #     for aa in self[gene_id]: # Get the MSA row for the specified gene ID. 
-    #         if (n == idx) and (aa != MSAFile.gap_symbol):
-    #             break # So that it doesn't exit if idx = 0 and the first symbol is a gap. 
-    #         n += int(aa != MSAFile.gap_symbol) # Increment number of non-gaps encountered. 
-    #         n_gaps += int(aa == MSAFile.gap_symbol)
-    #     return n + n_gaps
-    
     
     def map_idx_to_msa(self, idx, gene_id: str):
         '''Convert the index of a residue in one of the sequences to an index in the MSAFile.'''
@@ -85,7 +96,22 @@ class MSAFile():
                 if seq_idx == idx:
                     return msa_idx
                 seq_idx += 1 # Increment the sequence index only if there is not a gap symbol in the MSA.
-        
+        return msa_idx # Return if the index is the last residue of the gene_id sequence. 
+
+
+    def map_idx_to_trimmed_msa(self, idx, gene_id):
+        ''''''
+        idx = self.map_idx_to_msa(idx, gene_id)
+        original_msa_idxs = self.clipkit_log_df[self.clipkit_log_df.status == 'keep'].idx.values 
+        idx_map = dict(zip(original_msa_idxs, np.arange(len(original_msa_idxs))))
+        return idx_map.get(idx, None)
+
+    def map_idx_from_trimmed_msa(self, idx, gene_id):
+        ''''''
+        original_msa_idxs = self.clipkit_log_df[self.clipkit_log_df.status == 'keep'].idx.values 
+        idx_map = dict(zip(np.arange(len(original_msa_idxs)), original_msa_idxs))
+        idx = idx_map[idx]
+        return self.map_idx_from_msa(idx, gene_id)
 
     
     @classmethod
@@ -123,13 +149,18 @@ class MSAFile():
         return map_idxs
 
 
-    def get_entropy(self, alphabet:dict=None, exclude_gaps:bool=False):
+    def get_entropy(self, alphabet:dict=None, max_gap_fraction:float=0.2):
+
+        '''
+        :param max_gap_fraction: If more than this fraction of columns has a gap, then return None instead of an entropy value. 
+        '''
 
         alphabet_size = 20 if (alphabet is None) else len(np.unique(list(alphabet.values())))
+        get_gap_fraction = lambda col : np.mean(col == self.gap_symbol)
 
         entropy = list()
         for col in self.to_array(alphabet=alphabet).T:
-            if (exclude_gaps and (self.gap_symbol in col)):
+            if get_gap_fraction(col) > max_gap_fraction:
                 entropy.append(np.nan)
                 continue 
             _, counts = np.unique(col[col != self.gap_symbol], return_counts=True)

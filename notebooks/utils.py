@@ -39,10 +39,108 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 from datetime import date
 
+FOLDSEEK_FIELD_MAP = dict()
+FOLDSEEK_FIELD_MAP['query'] = 'query_id'
+FOLDSEEK_FIELD_MAP['target'] = 'target_id'
+FOLDSEEK_FIELD_MAP['evalue'] = 'e_value'
+FOLDSEEK_FIELD_MAP['gapopen'] = 'num_gaps'
+FOLDSEEK_FIELD_MAP['pident'] = 'percent_identity'
+FOLDSEEK_FIELD_MAP['fident'] = 'fraction_identical'
+FOLDSEEK_FIELD_MAP['nident'] = 'num_identical'
+FOLDSEEK_FIELD_MAP['qstart'] = 'query_start'
+FOLDSEEK_FIELD_MAP['qend'] = 'query_end'
+FOLDSEEK_FIELD_MAP['qlen'] = 'query_length'
+FOLDSEEK_FIELD_MAP['tstart'] = 'target_start'
+FOLDSEEK_FIELD_MAP['tend'] = 'target_end'
+FOLDSEEK_FIELD_MAP['tlen'] = 'target_length'
+FOLDSEEK_FIELD_MAP['alnlen'] = 'alignment_length'
+FOLDSEEK_FIELD_MAP['bits'] = 'bit_score'
+FOLDSEEK_FIELD_MAP['cigar'] = 'cigar'
+FOLDSEEK_FIELD_MAP['qseq'] = 'query_seq'
+FOLDSEEK_FIELD_MAP['tseq'] = 'target_seq'
+FOLDSEEK_FIELD_MAP['qheader'] = 'query_header'
+FOLDSEEK_FIELD_MAP['theader'] = 'target_header'
+FOLDSEEK_FIELD_MAP['qaln'] = 'query_alignment'
+FOLDSEEK_FIELD_MAP['taln'] = 'target_alignment'
+FOLDSEEK_FIELD_MAP['mismatch'] = 'num_mismatches'
+FOLDSEEK_FIELD_MAP['qcov'] = 'query_coverage'
+FOLDSEEK_FIELD_MAP['tcov'] = 'target_coverage'
+FOLDSEEK_FIELD_MAP['taxid'] = 'taxonomy_id'
+FOLDSEEK_FIELD_MAP['taxname'] = 'taxonomy'
+FOLDSEEK_FIELD_MAP['taxlineage'] = 'lineage'
+FOLDSEEK_FIELD_MAP['lddt'] = 'lddt'
+FOLDSEEK_FIELD_MAP['lddtfull'] = 'lddt_full'
+FOLDSEEK_FIELD_MAP['qtmscore'] = 'query_tm_score'
+FOLDSEEK_FIELD_MAP['ttmscore'] = 'target_tm_score'
+FOLDSEEK_FIELD_MAP['alntmscore'] = 'alignment_tm_score'
+FOLDSEEK_FIELD_MAP['rmsd'] = 'rmsd'
+FOLDSEEK_FIELD_MAP['prob'] = 'probability'
+
+FOLDSEEK_FIELDS = 'query target evalue gapopen pident fident nident qstart qend qlen tstart tend tlen alnlen bits cigar qseq tseq qheader theader qaln taln mismatch qcov tcov taxid taxname taxlineage lddt lddtfull qtmscore ttmscore alntmscore rmsd prob'
+FOLDSEEK_FIELDS = [FOLDSEEK_FIELD_MAP.get(field) for field in FOLDSEEK_FIELDS.split(' ')]
+
 today = date.today().strftime("%m%d%Y")
 
+INTERPROSCAN_FIELDS = ['gene_id', 'checksum', 'length', 'analysis', 'accession', 'description', 'start','stop', 'e_value', 'status', 'date', 'interpro_accession', 'interpro_description', 'go_terms', 'pathways']
+
+PROJECT_IDS = pd.read_csv('project_ids.csv', index_col=0).project_id.to_dict()
+FORWARD_READS_PATHS = pd.read_csv('reads_paths.csv', index_col=0).forward_reads_path.to_dict()
+REVERSE_READS_PATHS = pd.read_csv('reads_paths.csv', index_col=0).reverse_reads_path.to_dict()
+
+
+colors = ['#8A5E3B', '#A0704F', '#B38A5A', '#9AA45A', '#7FA65E', '#62A46A', '#4F9D78', '#4F9A8C', '#5A93A0', '#6A89B0', '#7A7FB8']
+GENOME_ID_COLORS = dict(zip(['bz_0', 'bz_1', 'bz_2', 'bz_3', 'bz_4', 'bz_5', 'bz_7', 'bz_8', 'bz_9', 'bz_10', 'bz_11'], colors))
+
+plt.rcParams['axes.prop_cycle'] = cycler(color=colors)
+
+START_CODONS = ['ATG', 'GTG', 'TTG']
+STOP_CODONS = ['TAA', 'TAG', 'TGA']
+
+reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
+# get_gene_id = lambda path : os.path.basename(path).replace('_pred.txt', '').replace('genes_', '') # Remove the prefix and file extension. 
+get_gene_id = lambda string : re.search(r'orfm.bz_\d+\.\d+_\d+', string).group(0) if (re.search(r'orfm.bz_\d+\.\d+_\d+', string) is not None) else None
+get_genome_id = lambda string : re.search(r'bz_\d+', string).group(0)
 
 REDUCED_ALPHABET = {'A':'A', 'V':'A', 'L':'A', 'I':'A', 'M':'A', 'F':'R', 'W':'R','Y':'R','K':'+','R':'+','H':'+','D':'-','E':'-','S':'P','T':'P','N':'P','Q':'P','G':'G','P':'P','C':'C', '.':'.'}
+
+
+HYDROPHOBICITY_SCALE = {'I': 4.5, 'V': 4.2, 'L': 3.8, 'F': 2.8, 'C': 2.5,'M': 1.9, 'A': 1.8, 'G': -0.4, 'T': -0.7, 'S': -0.8,'W': -0.9, 'Y': -1.3, 'P': -1.6, 'H': -3.2, 'E': -3.5,'Q': -3.5, 'D': -3.5, 'N': -3.5, 'K': -3.9, 'R': -4.5}
+CHARGE_SCALE = {'D': -1, 'E': -1, 'K': 1, 'R': 1, 'H': 0, 'A': 0, 'C': 0, 'F': 0, 'G': 0, 'I': 0, 'L': 0, 'M': 0, 'N': 0, 'P': 0, 'Q': 0, 'S': 0, 'T': 0, 'V': 0, 'W': 0, 'Y': 0}
+
+
+def plot_hydrophobicity(msa:MSAFile, window_size:int=5, step_size:int=1, x_min:int=0, x_max:int=100, ax:plt.Axes=None, legend:bool=False, palette=dict()):
+    '''
+    
+    '''
+    is_gap = lambda seq : np.all(np.array(list(seq)) == msa.gap_symbol)
+    get_hydrophobicity = lambda seq : None if is_gap(seq) else np.mean([HYDROPHOBICITY_SCALE[aa] for aa in seq if (aa != msa.gap_symbol)])
+    # get_charge = lambda seq : None if is_gap(seq) else np.mean([CHARGE_SCALE[aa] for aa in seq if (aa != msa.gap_symbol)])
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 4))
+
+    x = list(range(0, msa.n_cols, step_size))
+    y = list()
+
+    for id_, seq in zip(msa.ids, msa.seqs):
+        seq = seq.replace('X', msa.gap_symbol)
+        windows = [seq[i:i + window_size] for i in x]
+        y.append(np.array([get_hydrophobicity(window) for window in windows]))
+        ax.plot(x, y[-1], label=id_, color=palette.get(id_, 'lightgray'))
+
+    get_mean = lambda arr : None if np.all(np.isnan(arr)) else np.mean(arr[~np.isnan(arr)])
+
+    y = np.array(y)
+    y_mean = [get_mean(y_.astype(float)) for y_ in y.T]
+
+    ax.scatter(x, y_mean, color='black', zorder=100)
+
+    ax.set_ylabel('hydrophobicity')
+    ax.set_xlabel('position')
+    ax.set_xlim(xmin=x_min, xmax=x_max)
+
+    if legend:
+        ax.legend()
 
 
 
@@ -94,7 +192,7 @@ def get_fold_metadata(paths:str, output_path:str=None, parser=AlphaFoldOutput) -
     for path in tqdm(paths, desc='get_fold_metadata'):
 
         output = parser(path)
-        assert output.get_num_proteins() == 1, f'get_fold_metadata: Expected 1 unique protein per structure, but got {output.get_num_proteins()} in {path}'
+        assert len(output.get_chain_to_chain_id_map(chain_type='protein')) == 1, f'get_fold_metadata: Expected 1 unique protein per structure, but got {output.get_num_proteins()} in {path}'
 
         row = dict()
         row['path'] = os.path.abspath(path)
@@ -106,11 +204,12 @@ def get_fold_metadata(paths:str, output_path:str=None, parser=AlphaFoldOutput) -
         row['iptm_best_model'] = output.get_iptms(best_model=True)
         row['ptm_best_model'] = output.get_ptms(best_model=True)
         row['num_seeds'] = output.get_num_seeds()
-        row['num_protein_chains'] = output.get_num_protein_chains()
-        row['num_proteins'] = output.get_num_proteins()
+        row['num_protein_chains'] = len(output.get_chain_ids(chain_type='protein'))
+        row['num_proteins'] = len(output.get_chain_to_chain_id_map(chain_type='protein'))
 
         if isinstance(output, ColabFoldOutput):
             row.update(output.get_msa_metadata()[0])
+            row['plddts_best_model'] = output.get_plddts(best_model=True)
 
         df.append(row)
 
@@ -150,34 +249,6 @@ def load_json(path):
 # -------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-INTERPROSCAN_FIELDS = ['gene_id', 'checksum', 'length', 'analysis', 'accession', 'description', 'start','stop', 'e_value', 'status', 'date', 'interpro_accession', 'interpro_description', 'go_terms', 'pathways']
-
-PROJECT_IDS = pd.read_csv('project_ids.csv', index_col=0).project_id.to_dict()
-FORWARD_READS_PATHS = pd.read_csv('reads_paths.csv', index_col=0).forward_reads_path.to_dict()
-REVERSE_READS_PATHS = pd.read_csv('reads_paths.csv', index_col=0).reverse_reads_path.to_dict()
-
-colors = ['#5E5247','#6C6154','#7B7061','#8A8170','#84886C','#737F69','#65776B','#5F7472','#63727D','#676F88','#6B6B93']
-colors = ['#6A5A4B', '#7A6956', '#8B7A62', '#9A8B68','#8B9164','#768C66','#64836C','#5D7F76','#607B83','#66778C','#6B6F91']
-colors = ['#8A5E3B', '#A0704F', '#B38A5A', '#9AA45A', '#7FA65E', '#62A46A', '#4F9D78', '#4F9A8C', '#5A93A0', '#6A89B0', '#7A7FB8']
-GENOME_ID_COLORS = dict(zip(['bz_0', 'bz_1', 'bz_2', 'bz_3', 'bz_4', 'bz_5', 'bz_7', 'bz_8', 'bz_9', 'bz_10', 'bz_11'], colors))
-
-plt.rcParams['axes.prop_cycle'] = cycler(color=colors)
-
-
-START_CODONS = ['ATG', 'GTG', 'TTG']
-STOP_CODONS = ['TAA', 'TAG', 'TGA']
-
-reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
-# get_gene_id = lambda path : os.path.basename(path).replace('_pred.txt', '').replace('genes_', '') # Remove the prefix and file extension. 
-get_gene_id = lambda string : re.search(r'orfm.bz_\d+\.\d+_\d+', string).group(0) if (re.search(r'orfm.bz_\d+\.\d+_\d+', string) is not None) else None
-get_genome_id = lambda string : re.search(r'bz_\d+', string).group(0)
-
-def load_colabfold_plddts(path:str='../data/genes/colabfold/scores.json', gene_ids=None):
-    with open(path, 'r') as f:
-        plddts = json.load(f)
-    if gene_ids is not None:
-        plddts = {gene_id:plddts_ for gene_id, plddts_ in plddts.items() if (gene_id in gene_ids)}     
-    return plddts
 
 
 # # Functions for analyzing interfaces in multi-chain AlphaFold structures. 
