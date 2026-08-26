@@ -167,9 +167,11 @@ class AlphaFoldOutput():
         for path in glob.glob(os.path.join(self.dir_, '**', '*'), recursive=True):
 
             for file_type, pattern in self.patterns.items():
+
                 if re.search(pattern, path) is None:
                     continue 
                 model = re.search(pattern, path).group(1)
+
 
                 if model in confidences:
                     confidences[model][file_type] = os.path.abspath(path)

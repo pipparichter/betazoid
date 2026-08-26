@@ -73,7 +73,7 @@ class FASTAFile():
     def _from_file_index(path:str, ids:list=None):
         get_description = lambda record : ' ' if (type(record.description) != str) else record.description.replace(record.id, '')
         
-        records = SeqIO.index(path, 'fasta')
+        records = SeqIO.index(path, 'fasta-pearson')
         records = [records[id_] for id_ in ids]
         records = [(record.id, record.seq, get_description(record)) for record in records]
         return list(zip(*records))
@@ -82,7 +82,7 @@ class FASTAFile():
     def _from_file(path:str):
         get_description = lambda record : ' ' if (type(record.description) != str) else record.description.replace(record.id, '')
         
-        records = [(record.id, record.seq, get_description(record)) for record in SeqIO.parse(path, 'fasta')]
+        records = [(record.id, record.seq, get_description(record)) for record in SeqIO.parse(path, 'fasta-pearson')]
         return list(zip(*records))
 
     @classmethod

@@ -48,7 +48,7 @@ def get_contacts(output, min_contact_prob:float=0.5):
     contact_probs = output.get_contact_probs(mean_pool=False, best_model=False) # Get the contact_probs as a dictionary mapping the model name to the contact_probs_df. 
     paes = output.get_paes(mean_pool=False, best_model=False)
     token_chain_ids = output.get_token_chain_ids()
-    chains = output.get_chains()
+    chains = output.get_chain_id_to_chain_map()
 
     df = list()
     for model in contact_probs.keys():

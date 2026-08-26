@@ -12,7 +12,7 @@ from dssp import DSSPFile
 from alphafold import AlphaFoldInputFile, AlphaFoldOutput, AlphaFoldServerOutput
 from colabfold import ColabFoldOutput
 from blast import BLASTFile
-from files.pdb import PDBFile, cif_to_pdb, sph_to_pdb, ATOMS
+from files.structure import StructureFile, cif_to_pdb, sph_to_pdb, ATOMS
 import orjson
 import ast
 
