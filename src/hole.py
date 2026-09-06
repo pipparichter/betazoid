@@ -117,7 +117,7 @@ def hole_main(paths, output_dir:str='../data/genes/hole/output', overwrite:bool=
         assert os.path.exists(path), f'hole_main: File {path} does not exist.'
         
         if os.path.exists(output_path) and (not overwrite):
-            continue 
+            pass 
         else:
             cpoint, cvect = hole_get_axis(StructureFile.from_file(path).to_df(), chain_ids=chain_ids, start_residue_num=start_residue_num, end_residue_num=end_residue_num)
             cpoint, cvect = ' '.join([str(n) for n in cpoint]), ' '.join([str(n) for n in cvect])
@@ -132,20 +132,20 @@ def hole_main(paths, output_dir:str='../data/genes/hole/output', overwrite:bool=
 
 
 
-def hole_load_sph_center_coords(name:str, output_dir:str='../data/genes/hole/output'):
-
-    
+def hole_load_output(name:str, output_dir:str='../data/genes/hole/output'):
+    ''''''
     path = os.path.join(output_dir, f'{name}.pdb')
-
     pdb_df = StructureFile.from_file(path, format='pdb').to_df(atoms=['QSS'], residues=['SPH'])
     pdb_df = pdb_df.sort_values('residue_num') # Residue number is the position along the pore. 
     # This should be in order of position through the channel (which is the pseudo-"residue number" in the PDB file). 
     # Should be a numpy array with shape (n_atoms, 3). 
     sph_center_coords = np.array(pdb_df['QSS'].tolist()) 
-    return sph_center_coords
+    sph_radii = pdb_df.b_factor.values.tolist()  # The radius is stored in the b_factor field. This includes Van der Waals. 
+    return sph_center_coords, sph_radii
 
 
-def hole_load_coords(name:str, input_dir:str='../data/genes/hole/output'):    
+def hole_load_coords(name:str, input_dir:str='../data/genes/hole/output'): 
+    ''''''   
     path = os.path.join(input_dir, f'{name}.pdb')
     pdb_df = StructureFile.from_file(path, format='pdb').to_df().drop(columns='b_factor')
     pdb_df = pdb_df.melt(value_name='coord', var_name='atom', id_vars=['residue_num', 'residue', 'chain_id'])
@@ -166,21 +166,19 @@ def hole_process_output(name:str, input_dir:str='../data/genes/hole/input', outp
     '''
     hole_df = list()
 
-    sph_center_coords = hole_load_sph_center_coords(name, output_dir=output_dir)
+    sph_center_coords, sph_radii = hole_load_output(name, output_dir=output_dir)
     pdb_df, coords = hole_load_coords(name, input_dir=input_dir)
 
-    for i, coord in enumerate(sph_center_coords):
+    for i, (coord, radius) in enumerate(zip(sph_center_coords, sph_radii)):
         coord = np.expand_dims(coord, axis=0)
         dists = cdist(coord, coords).ravel()
 
         df = pdb_df.copy().assign(distance=dists, sph_idx=i)
         df = df.sort_values('distance', ascending=True).drop_duplicates('chain_id')
+        df['radius'] = radius
         hole_df.append(df)
 
     hole_df = pd.concat(hole_df)
     hole_df['name'] = name 
     hole_df['hole_length'] =  max(pdist(sph_center_coords))
     return hole_df
-
-
-    

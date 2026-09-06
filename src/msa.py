@@ -1,7 +1,6 @@
 '''Creates unpaired MSAs in af3 format to use as AlphaFold input.'''
 import sys 
 sys.path.append('/home/prichter/Documents/banfield/betazoid/src/')
-sys.path.append('/home/prichter/Documents/banfield/betazoid/src/files/')
 
 import numpy as np
 import pandas as pd 
@@ -13,24 +12,19 @@ import argparse
 import glob 
 import subprocess
 
-from fasta import FASTAFile 
+from files.fasta import FASTAFile 
 
+DATABASE_NAME = 'database'
 
 ROOT_DIR = '/home/prichter/Documents/banfield/betazoid'
+TMP_DIR = os.path.join(ROOT_DIR, 'data', 'genes', 'mmseqs', 'tmp')
 
-OUTPUT_DIRS = dict()
-OUTPUT_DIRS['a3m'] = os.path.join(ROOT_DIR, 'data/genes/mmseqs')
-OUTPUT_DIRS['afa'] = os.path.join(ROOT_DIR, 'data/genes/muscle')
-
-
-DATABASE_DIR = os.path.join(OUTPUT_DIRS['a3m'], 'db')
-DATABASE_NAME = 'database'
-TMP_DIR = os.path.join(OUTPUT_DIRS['a3m'], 'tmp')
 
 MIN_SEQ_IDENTITY = 0.95
 MIN_COVERAGE = 0.95 
 COVERAGE_MODE = 5
 SENSITIVITY = 9.5
+NUM_ITERATIONS = 1
 
 @dataclass
 class Databases:
@@ -40,7 +34,7 @@ class Databases:
     output_msa: str
 
 
-def msa_build_a3m_cleanup(msa_paths:list, database_dir:str=DATABASE_DIR):
+def msa_build_a3m_cleanup(msa_paths:list, database_dir:str=None):
     '''Clean up the databases and directories created for MSA generation.
     
     :param msa_paths: A list of output MSAs to remove from the output directory. These are the MSAs failing the keep_msa condition
@@ -79,6 +73,11 @@ def msa_dereplicate(path, output_dir=None, query_gene_ids:list=None, min_seq_ide
     :param coverage_mode
 
     '''
+
+    print(f'msa_dereplicate: min_coverage = {min_coverage}')
+    print(f'msa_dereplicate: min_seq_identity = {min_seq_identity}')
+    print(f'msa_dereplicate: coverage_mode = {coverage_mode}')
+
     name = os.path.basename(path).split('.')[0]
     output_path = os.path.join(output_dir, name)
     cmd = f'mmseqs easy-cluster {path} {output_path} {TMP_DIR} --cov-mode {coverage_mode} -c {min_coverage} --min-seq-id {min_seq_identity}'
@@ -107,7 +106,7 @@ def msa_dereplicate(path, output_dir=None, query_gene_ids:list=None, min_seq_ide
 
 
 
-def msa_build_a3m(path:str, output_dir:str=None, query_gene_ids:list=None, database_dir:str=DATABASE_DIR, sensitivity=SENSITIVITY, **kwargs):
+def msa_build_a3m(path:str, output_dir:str=None, query_gene_ids:list=None, database_dir:str=None, sensitivity=SENSITIVITY, num_iterations:int=NUM_ITERATIONS, **kwargs):
     '''Use MMseqs align utilities to construct a3m-format alignment files for each sequence in the input FASTA file. The pipeline
     is as follows:
         (1) Use the input FASTA file to construct an MMseqs database. 
@@ -123,13 +122,15 @@ def msa_build_a3m(path:str, output_dir:str=None, query_gene_ids:list=None, datab
         sequences as the reference sequence are removed from output_dir. 
     :param sensitivity: The search sensitivity for the initial MMseqs search step. 
     '''
-
     database_path = os.path.join(database_dir, DATABASE_NAME)
     databases = Databases(database_path, f'{database_path}.out', f'{database_path}.aln', f'{database_path}.msa')
 
+    print(f'msa_build_a3m: num_iterations = {num_iterations}')
+    print(f'msa_build_a3m: sensitivity = {sensitivity}')
+
     kwargs = {'shell':True, 'check':True, 'stdout':subprocess.DEVNULL}
     cmds = [f'mmseqs createdb {path} {databases.input}']
-    cmds += [f'mmseqs search {databases.input} {databases.input} {databases.output_search} {TMP_DIR} -s {sensitivity}']
+    cmds += [f'mmseqs search {databases.input} {databases.input} {databases.output_search} {TMP_DIR} -s {sensitivity} --num-iterations {num_iterations}']
     cmds += [f'mmseqs align {databases.input} {databases.input} {databases.output_search} {databases.output_align}']
     cmds += [f'mmseqs result2msa {databases.input} {databases.input} {databases.output_align} {databases.output_msa}']
     cmds += [f'mmseqs unpackdb {databases.output_msa} {output_dir} --unpack-suffix .a3m']
@@ -222,7 +223,7 @@ def msa_main(path:str, fmt:str='afa', name:str=None, output_dir:str=None, databa
     _, path = msa_dereplicate(path, query_gene_ids=query_gene_ids, output_dir=output_dir, **kwargs)
 
     if fmt == 'a3m':
-        msa_paths = msa_build_a3m(path, database_dir=database_dir, query_gene_ids=query_gene_ids, output_dir=output_dir, **kwargs)
+        msa_paths = msa_build_a3m(path, database_dir=database_dir, query_gene_ids=query_gene_ids, output_dir=output_dir, name=name, **kwargs)
     elif fmt == 'afa':
         msa_paths = msa_build_afa(path, name=name, output_dir=output_dir, **kwargs)
     else:
@@ -240,7 +241,7 @@ if __name__ == '__main__':
     parser.add_argument('--name', required=False, type=str, default=None)
     parser.add_argument('--query-gene-ids', default=None, nargs='+')    
     parser.add_argument('--output-dir', type=str, default=None)
-    parser.add_argument('--database-dir', type=str, default=DATABASE_DIR)
+    parser.add_argument('--database-dir', type=str, default='/home/prichter/Documents/banfield/betazoid/data/genes/mmseqs/db')
     # Arguments for msa_build_a3m.
     parser.add_argument('--sensitivity', type=float, default=SENSITIVITY)
     # Arguments for msa_dereplicate.

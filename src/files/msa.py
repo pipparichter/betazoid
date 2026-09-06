@@ -5,7 +5,7 @@ import io
 from Bio import SeqIO
 import glob
 import numpy as np 
-from fasta import FASTAFile
+from files.fasta import FASTAFile
 
 
 def load_clipkit_log(path:str):

@@ -94,7 +94,7 @@ class BLASTFile():
         query_info_pattern = r'Query=\s*(?P<query_id>.+?)\n\nLength=(?P<query_length>\d+)' # Make sure the first match is non-greedy.
 
         queries = list(re.finditer(query_info_pattern, content, flags=re.DOTALL|re.MULTILINE))
-        print(f'BLASTFile._from_ggkbase_text_file: Found {len(queries)} query entries in the file.')
+        # print(f'BLASTFile._from_ggkbase_text_file: Found {len(queries)} query entries in the file.')
 
         df = list()
         for i, query in enumerate(queries):

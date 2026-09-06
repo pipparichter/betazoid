@@ -5,7 +5,6 @@ import glob
 import json
 import orjson
 import re
-from fasta import FASTAFile
 import itertools 
 
 CHAIN_IDS = list()
@@ -129,29 +128,58 @@ class AlphaFoldInputFile():
 
 class AlphaFoldOutput():
     patterns = dict()
-    patterns['summary'] = r'(seed-\d+_sample-\d+)\/summary_confidences'
-    patterns['full'] = r'(seed-\d+_sample-\d+)\/confidences'
+    # There are different file naming conventions for different AlphaFold versions.
+    patterns[3] = dict()
+    patterns[3]['summary'] = r'(seed-\d+_sample-\d+)\/summary_confidences'
+    patterns[3]['full'] = r'(seed-\d+_sample-\d+)\/confidences'
+
+    patterns[4] = dict()
+    patterns[4]['summary'] = r'(seed-\d+_sample-\d+)\/.*summary_confidences'
+    # Need to put the negative lookahead before the .* part, as this consumes all characters already. 
+    patterns[4]['full'] = r'(seed-\d+_sample-\d+)\/(?!.*summary_confidences).*confidences' # Needed to update these for the new AlphaFold file-naming convention.
+
+    def _get_model_path(self, model:str):
+        ''''''
+        if self.version == 3:
+            path = os.path.join(self.dir_, model, 'model.cif')
+        elif self.version == 4:
+            path = os.path.join(self.dir_, model, f'{self.name}_{model}_model.cif')
+        else:
+            raise Exception(f'AlphaFoldOutput._get_model_path: Unsupported version {self.version}.')
+
+        assert os.path.exists(path), f'AlphaFoldOutput._get_model_path: CIF file does not exist for {model} at {path}.'
+        return os.path.abspath(path)
 
     def _get_model_paths(self):
+        '''Get the path to each model file from the subdirectories.'''
         dirs = [path for path in glob.glob(os.path.join(self.dir_, '*')) if os.path.isdir(path)]
         model_paths = dict()
         for dir_ in dirs:
             model = os.path.basename(dir_)
-            model_paths[model] = os.path.abspath(os.path.join(dir_, 'model.cif'))
-            assert os.path.exists(model_paths[model]), f'AlphaFoldOutput: CIF file does not exist for {model}.'
+            model_paths[model] = self._get_model_path(model)
         return model_paths
+
+    def _get_scores_path(self):
+        ''' '''
+        if self.version == 3:
+            return os.path.join(self.dir_, 'ranking_scores.csv')
+        elif self.version == 4:
+            return os.path.join(self.dir_, f'{self.name}_ranking_scores.csv')
+        else:
+            raise Exception(f'AlphaFoldOutput._get_scores_path: Unsupported version {self.version}.')
+
 
     def _get_best_model(self):
         '''Get the name of the model with the highest ranking score from the ranking_scores.csv file in the AlphaFold3 output root directory.
         
         :returns: The name of the model with the highest ranking score, which is of the form seed-x-sample-y. 
         '''
-        df = pd.read_csv(os.path.join(self.dir_, 'ranking_scores.csv')) # This file contains the model rankings. 
+        df = pd.read_csv(self._get_scores_path()) # This file contains the model rankings. 
         df = df.sort_values('ranking_score', ascending=False)
         seed, sample = df.iloc[0]['seed'], df.iloc[0]['sample']
         return f'seed-{int(seed)}_sample-{int(sample)}' # The name of the model corresponding to the highest score. 
 
-    def _get_confidences(self):
+    def _get_confidences(self, patterns:dict=None):
         '''Recursively search the AlphaFold output directory for the data paths containing the full and summary model confidence data.
         These output files are then organized into models according to the sub-model they correspond to. 
         The JSON file containing the full confidence data includes:
@@ -166,12 +194,11 @@ class AlphaFoldOutput():
         confidences = dict()
         for path in glob.glob(os.path.join(self.dir_, '**', '*'), recursive=True):
 
-            for file_type, pattern in self.patterns.items():
+            for file_type, pattern in patterns.items():
 
                 if re.search(pattern, path) is None:
                     continue 
                 model = re.search(pattern, path).group(1)
-
 
                 if model in confidences:
                     confidences[model][file_type] = os.path.abspath(path)
@@ -181,10 +208,12 @@ class AlphaFoldOutput():
         return confidences 
 
 
-    def __init__(self, dir_=None):
+    def __init__(self, dir_=None, version:int=3):
         # Paths to the confidence output for each model. 
         self.dir_ = os.path.abspath(dir_)
-        self.confidences = self._get_confidences()
+        self.version = version 
+        self.patterns = AlphaFoldOutput.patterns[version] # Make sure to set the correct paths first.
+        self.confidences = self._get_confidences(patterns=self.patterns)
         self.name = os.path.basename(dir_)
 
         self.inputs = load_json(os.path.join(dir_, f'{self.name}_data.json'))
@@ -194,9 +223,8 @@ class AlphaFoldOutput():
 
         self.num_chains = len(self.chain_ids)
         self.best_model = self._get_best_model()
-        self.best_model_path = os.path.join(self.dir_, self.best_model, 'model.cif')
+        self.best_model_path = self._get_model_path(self.best_model)
         self.model_paths = self._get_model_paths()
-        assert os.path.exists(self.best_model_path), f'AlphaFoldOutput.__init__: Best model path {self.best_model_path} does not exist.'
 
     def get_num_seeds(self):
         '''Get the number of seeds used for a single AlphaFold prediction.'''
@@ -296,6 +324,8 @@ class AlphaFoldOutput():
             inputs_df = inputs_df[inputs_df.chain_type == chain_type].copy()
         return inputs_df.groupby('chain').chain_id.apply(list).to_dict()
 
+    def get_chain_ptms(self, mean_pool:bool=False, models:list=None, best_model:bool=False):
+        return self._get_summary_data('chain_ptm', mean_pool=mean_pool, models=models, best_model=best_model)
 
     def get_chain_ids(self, chain_type:str='protein'):
         return list(self.get_chain_id_to_chain_map(chain_type=chain_type).keys())
@@ -341,6 +371,14 @@ class AlphaFoldServerOutput(AlphaFoldOutput):
         best_model = models[np.argmax(scores)]
         return best_model
 
+
+    def _get_model_paths(self):
+        model_paths = dict()
+        for path in glob.glob(os.path.join(self.dir_, '*cif')):
+            model = re.search(r'model_(\d+).cif', path).group(1)
+            model_paths[model] = os.path.abspath(path)
+        return model_paths
+
     # @staticmethod
     # def _get_inputs(path:str):
     #     ''''''
@@ -375,6 +413,7 @@ class AlphaFoldServerOutput(AlphaFoldOutput):
         self.chain_ids = self._get_chains()
         self.best_model = self._get_best_model()
         self.best_model_path = os.path.join(dir_, f'{self.name}_model_{self.best_model}.cif')
+        self.model_paths = self._get_model_paths()
 
 
     def get_ranking_scores(self):

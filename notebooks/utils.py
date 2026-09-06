@@ -1,17 +1,16 @@
 import sys 
-sys.path.append('/home/prichter/Documents/banfield/betazoid/src/files/')
+# sys.path.append('/home/prichter/Documents/banfield/betazoid/src/files/')
 sys.path.append('/home/prichter/Documents/banfield/betazoid/src/')
-sys.path.append('/home/prichter/Documents/banfield/betazoid/scripts/')
 
-from fasta import FASTAFile
-from tmhmm import TMHMMFile
-from gfa import GFAFile
-from msa import MSAFile
-from bam import BamFile
-from dssp import DSSPFile
-from alphafold import AlphaFoldInputFile, AlphaFoldOutput, AlphaFoldServerOutput
-from colabfold import ColabFoldOutput
-from blast import BLASTFile
+from files.fasta import FASTAFile
+from files.tmhmm import TMHMMFile, DeepTMHMMFile
+from files.gfa import GFAFile
+from files.msa import MSAFile
+from files.bam import BamFile
+from files.dssp import DSSPFile
+from files.alphafold import AlphaFoldInputFile, AlphaFoldOutput, AlphaFoldServerOutput
+from files.colabfold import ColabFoldOutput
+from files.blast import BLASTFile
 from files.structure import StructureFile, cif_to_pdb, sph_to_pdb, ATOMS
 import orjson
 import ast
@@ -35,7 +34,6 @@ import itertools
 import subprocess
 import json
 
-import matplotlib.pyplot as plt
 from cycler import cycler
 from datetime import date
 
@@ -100,10 +98,11 @@ reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
 # get_gene_id = lambda path : os.path.basename(path).replace('_pred.txt', '').replace('genes_', '') # Remove the prefix and file extension. 
 get_gene_id = lambda string : re.search(r'orfm.bz_\d+\.\d+_\d+', string).group(0) if (re.search(r'orfm.bz_\d+\.\d+_\d+', string) is not None) else None
 get_genome_id = lambda string : re.search(r'bz_\d+', string).group(0)
+get_gc_content = lambda seq : (seq.count('G') + seq.count('C')) / len(seq)
+get_codons = lambda nt_seq : [nt_seq[i:i + 3] for i in range(0, len(nt_seq), 3)]
+
 
 REDUCED_ALPHABET = {'A':'A', 'V':'A', 'L':'A', 'I':'A', 'M':'A', 'F':'R', 'W':'R','Y':'R','K':'+','R':'+','H':'+','D':'-','E':'-','S':'P','T':'P','N':'P','Q':'P','G':'G','P':'P','C':'C', '.':'.'}
-
-
 HYDROPHOBICITY_SCALE = {'I': 4.5, 'V': 4.2, 'L': 3.8, 'F': 2.8, 'C': 2.5,'M': 1.9, 'A': 1.8, 'G': -0.4, 'T': -0.7, 'S': -0.8,'W': -0.9, 'Y': -1.3, 'P': -1.6, 'H': -3.2, 'E': -3.5,'Q': -3.5, 'D': -3.5, 'N': -3.5, 'K': -3.9, 'R': -4.5}
 CHARGE_SCALE = {'D': -1, 'E': -1, 'K': 1, 'R': 1, 'H': 0, 'A': 0, 'C': 0, 'F': 0, 'G': 0, 'I': 0, 'L': 0, 'M': 0, 'N': 0, 'P': 0, 'Q': 0, 'S': 0, 'T': 0, 'V': 0, 'W': 0, 'Y': 0}
 

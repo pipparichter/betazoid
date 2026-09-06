@@ -118,14 +118,20 @@ class BamFile():
         tag_patterns['NM'] = r'NM:i:(\d+)'
         tag_patterns['AM'] = r'AM:i:(\d+)'
         tag_patterns['NH'] = r'NH:i:(\d+)'
+        tag_patterns['feature_counts'] = r'XS:Z:([^\s]+)'
         
         df = list()
         for line in [line for line in result.split('\n') if (len(line) > 0)]:
             row = dict()
             for tag, pattern in tag_patterns.items():
                 match_ = re.search(pattern, line)
+
                 if match_ is not None:
-                    row[tag] = int(match_.group(1))
+                    try:
+                        row[tag] = int(match_.group(1))
+                    except:
+                        row[tag] = match_.group(1)
+
             # if len(row) > 0:
             df.append(row)
         assert len(df) == num_entries, f'BamFile._parse_tags: Expected {num_entries} entries, but got {len(df)}.'

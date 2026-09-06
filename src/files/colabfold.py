@@ -5,7 +5,6 @@ import glob
 import json
 import orjson
 import re
-from fasta import FASTAFile
 import itertools 
 
 # Note that ColabFold does not support multimers and/or ligands, which vastly simplifies parsing.

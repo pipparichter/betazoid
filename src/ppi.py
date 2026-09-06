@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import seaborn as sns
 
-get_group_id = lambda node_id : node_id.split(':')[0]
+get_node_type = lambda node_id : node_id.split(':')[0]
 get_position = lambda node_id : int(node_id.split(':')[1])
-get_edge_type = lambda contact_id : '-'.join(sorted([get_group_id(node_id) for node_id in contact_id.split('-')]))
+get_edge_type = lambda contact_id : '-'.join(sorted([get_node_type(node_id) for node_id in contact_id.split('-')]))
 
 
 # TODO: Should move this over to the AlphaFoldOutput object. 
@@ -42,7 +42,7 @@ def get_contact_idxs(contact_probs:np.ndarray, token_chain_ids:np.ndarray, min_c
 
 # NOTE: Everything here should be zero-indexed. 
 def get_contacts(output, min_contact_prob:float=0.5):
-    '''
+    '''Creat a DataFrame which store the residue contacts between all chains in an AlphaFold output structure.
     
     '''    
     contact_probs = output.get_contact_probs(mean_pool=False, best_model=False) # Get the contact_probs as a dictionary mapping the model name to the contact_probs_df. 
@@ -80,7 +80,7 @@ def get_contacts(output, min_contact_prob:float=0.5):
 
 
 def _get_pos(graph):
-    '''Obtain positions for nodes in a contact graph. Positions are determined by the node ID format. Node IDs are of the format {group_id}:{n}, 
+    '''Obtain positions for nodes in a contact graph. Positions are determined by the node ID format. Node IDs are of the format {node_type}:{n}, 
     where the group_1 determines the horizontal position of a node, and the n determines the vertical position.
     
     :param graph: A graph which is the output of get_contact_graph.
@@ -90,10 +90,10 @@ def _get_pos(graph):
 
     groups = dict()
     for node_id in list(graph.nodes):
-        group_id = get_group_id(node_id)
-        if group_id not in groups:
-            groups[group_id] = list()
-        groups[group_id].append(node_id)
+        node_type = get_node_type(node_id)
+        if node_type not in groups:
+            groups[node_type] = list()
+        groups[node_type].append(node_id)
 
     # If there is only one group, then use a circular layout. 
     if len(groups) == 1:
@@ -103,7 +103,7 @@ def _get_pos(graph):
 
         x_pos, y_pos = 0, 0
         pos = dict()
-        for group_id, node_ids in groups.items():
+        for node_type, node_ids in groups.items():
             for node_id in sorted(node_ids, key=get_position): # Order according to the residue number
                 pos[node_id] = (x_pos, y_pos)
                 y_pos += 1
@@ -113,13 +113,15 @@ def _get_pos(graph):
         return pos 
 
 
-def get_contact_graph(contacts_df, edge_types:list=None, min_contact_prob:float=0.5):
+def get_contact_graph(contacts_df, edge_types:list=None, min_contact_prob:float=0.5, min_num_models:int=0, node_ids:list=None):
     '''Build an undirected graph encoding the contacts provided in the contacts_df. 
     
     '''
     graph = nx.Graph()
     graph_df = contacts_df[contacts_df.contact_prob > min_contact_prob].copy()
-
+    graph_df['num_models'] = graph_df.groupby('name').model.transform('nunique')
+    graph_df = graph_df[graph_df.num_models >= min_num_models].copy()
+    graph_df = graph_df.sort_values('contact_prob', ascending=False).drop_duplicates('contact_id')
     graph_df['edge_type'] = graph_df.contact_id.apply(get_edge_type)
 
     # for edge_type, df in graph_df.groupby('edge_type'):
@@ -128,17 +130,22 @@ def get_contact_graph(contacts_df, edge_types:list=None, min_contact_prob:float=
     if edge_types is not None: # If edge types are specified, filter for those before constructing the graph. 
         graph_df = graph_df[graph_df.edge_type.isin(edge_types)].copy()
 
-    node_ids = np.unique([node_id for node_ids in graph_df.contact_id for node_id in node_ids.split('-')])
+    if node_ids is None:
+        node_ids = np.unique([node_id for node_ids in graph_df.contact_id for node_id in node_ids.split('-')])
+
     assert np.all([re.match(r'.+:\d+', node_id) for node_id in list(graph.nodes)]), f'get_contact_graph: Some of the node IDs are not in the correct format.'
 
     graph.add_nodes_from(node_ids)
 
     for contact_id in graph_df.contact_id:
+        # Only include edges where at least one node is in the node_ids list.
+        if not np.any(np.isin(contact_id.split('-'), node_ids)):
+            continue
         graph.add_edge(*contact_id.split('-'))
     return graph 
 
 
-def get_contact_profile(contacts_df, group_id:str='cluster_3', edge_types=None, min_contact_prob:float=0, metric:str='num_contacts', max_position:int=None):
+def get_contact_profile(contacts_df, node_type:str='cluster_3', edge_types=None, min_contact_prob:float=0, metric:str='num_contacts', max_position:int=None):
     
     assert metric in ['num_contacts', 'has_contact'], f'get_contact_profile: Specified metric {metric} is invalid.'
     graph = get_contact_graph(contacts_df, edge_types=edge_types, min_contact_prob=min_contact_prob)
@@ -146,7 +153,7 @@ def get_contact_profile(contacts_df, group_id:str='cluster_3', edge_types=None, 
     df = pd.DataFrame(graph.degree, columns=['node_id', 'num_contacts']) # Now each entry in the DataFrame is (1) a node and (2) the number of contacts the node participates in.
     df['has_contact'] = np.where(df.num_contacts > 0, 1, 0)
     df['position'] = df.node_id.apply(get_position) # n is the position encoded
-    df = df[df.node_id.apply(get_group_id) == group_id].copy()
+    df = df[df.node_id.apply(get_node_type) == node_type].copy()
 
     assert len(df) > 0, 'get_contact_profile: No contacts to plot!'
 
@@ -157,7 +164,7 @@ def get_contact_profile(contacts_df, group_id:str='cluster_3', edge_types=None, 
     return df[metric].values
 
 
-def plot_contact_profile(contacts_df, group_id:str='cluster_3', edge_types=None, ax:plt.Axes=None, x_min:int=0, x_max:int=100, min_contact_prob:float=0, metric:str='num_contacts', **kwargs):
+def plot_contact_profile(contacts_df, node_type:str='cluster_3', edge_types=None, ax:plt.Axes=None, x_min:int=0, x_max:int=100, min_contact_prob:float=0, metric:str='num_contacts', **kwargs):
     '''Construct a networkx Graph object using the contacts in the contacts_df.
 
     :param contacts_df:
@@ -165,7 +172,7 @@ def plot_contact_profile(contacts_df, group_id:str='cluster_3', edge_types=None,
     :returns None:
     '''
 
-    figure_df = pd.DataFrame({metric:get_contact_profile(contacts_df, group_id=group_id, edge_types=edge_types, metric=metric, min_contact_prob=min_contact_prob)})
+    figure_df = pd.DataFrame({metric:get_contact_profile(contacts_df, node_type=node_type, edge_types=edge_types, metric=metric, min_contact_prob=min_contact_prob)})
     figure_df = figure_df.reset_index(names='position', drop=False)
 
     if ax is None:
@@ -183,7 +190,7 @@ def plot_contact_profile(contacts_df, group_id:str='cluster_3', edge_types=None,
 
 
 
-def plot_contact_graph(contacts_df:pd.DataFrame, min_contact_prob:float=0.5, palette={'cluster_1':'lightgray', 'cluster_3':'gray'}):
+def plot_contact_graph(graph:nx.Graph, palette={'cluster_1':'lightgray', 'cluster_3':'gray'},  pos=None, color:str='lightgray', ax=None):
     '''Construct a networkx Graph object using the contacts in the contacts_df, and plot the graph with a custom
     layout, where nodes are positioned in columns corresponding to groups (see get_pos)
     
@@ -191,14 +198,13 @@ def plot_contact_graph(contacts_df:pd.DataFrame, min_contact_prob:float=0.5, pal
     :param palette:
     :returns None:
     '''
-
-    graph = get_contact_graph(contacts_df, min_contact_prob=min_contact_prob)
-    node_colors = [palette.get(get_group_id(node_id), 'black') for node_id in graph.nodes] 
+    node_colors = [palette.get(get_node_type(node_id), color) for node_id in graph.nodes] 
     node_ids = list(graph.nodes)
 
-    fig, ax = plt.subplots(figsize=(10, 10))
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 10))
 
-    pos = _get_pos(graph)
+    pos = _get_pos(graph) if (pos is None) else pos
     nx.draw_networkx_nodes(graph, pos=pos, node_color=node_colors, label=node_ids)
     nx.draw_networkx_edges(graph, pos=pos, edge_color='black')
     nx.draw_networkx_labels(graph, pos, labels=dict(zip(node_ids, node_ids)))

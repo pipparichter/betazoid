@@ -1,6 +1,32 @@
 import pandas as pd 
 import numpy as np 
 import re 
+import io 
+
+class DeepTMHMMFile():
+    fields = ['gene_id', 'location', 'start', 'end']
+
+    def __init__(self):
+        pass 
+
+    @classmethod
+    def from_file(cls, path):
+        
+        with open(path, 'r') as f:
+            lines = f.readlines()
+        
+        keep = lambda line : not (line.startswith('//') or line.startswith('#'))
+        text = '\n'.join([line for line in lines if keep(line)])
+        
+        df = pd.read_csv(io.StringIO(text), sep=r'\s+', names=DeepTMHMMFile.fields)
+
+        obj = cls()
+        obj.df = df
+        return obj 
+
+    def to_df(self):
+        return self.df.copy()
+
 
 
 class TMHMMFile():
