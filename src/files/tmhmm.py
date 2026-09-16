@@ -2,24 +2,59 @@ import pandas as pd
 import numpy as np 
 import re 
 import io 
+import os
 
 class DeepTMHMMFile():
-    fields = ['gene_id', 'location', 'start', 'end']
+    fields = ['id', 'annotation', 'start', 'end']
 
     def __init__(self):
         pass 
 
+    @staticmethod
+    def _parse_3line(path:str) -> pd.DataFrame:
+        '''Parse a 3line output file. These files are in a FASTA-like format.'''
+        with open(path, 'r') as f:
+            lines = f.readlines()
+            lines = [line for line in lines if (not line.startswith('#'))] # Remove comments. 
+        
+        assert (len(lines) % 3) == 0, f'DeepTMHMMFile._parse_3line: The number of lines in the 3line file should be a multiple of three {lines}.'
+        headers = [lines[i].replace('>', '') for i in range(0, len(lines), 3)]
+
+        ids = [header.split('|')[0].strip() for header in headers]
+        df = pd.DataFrame(index=pd.Series(ids, name='id'))
+        df['topology_type'] = [header.split('|')[1].strip() for header in headers] 
+        df['topology_string_full'] = [lines[i + 2].replace('>', '') for i in range(0, len(lines), 3)] # Topologies are on the second line. 
+        return df
+
+    @staticmethod
+    def _parse_gff3(path:str) -> pd.DataFrame:
+
+        with open(path, 'r') as f:
+            lines = f.readlines()
+
+        keep = lambda line : not (line.startswith('//') or line.startswith('#'))
+        text = '\n'.join([line for line in lines if keep(line)])
+
+        df = pd.read_csv(io.StringIO(text), sep=r'\s+', names=DeepTMHMMFile.fields).set_index('id')
+
+        topology_codes = {'signal':'S', 'TMhelix':'M', 'outside':'O', 'inside':'I'}
+        get_topology_string = lambda df : ''.join([topology_codes.get(annotation, 'X') for annotation in df.annotation])
+
+        df['topology_string'] = df.index.map(df.groupby(df.index).apply(get_topology_string))
+
+        return df
+
+
+
     @classmethod
     def from_file(cls, path):
         
-        with open(path, 'r') as f:
-            lines = f.readlines()
-        
-        keep = lambda line : not (line.startswith('//') or line.startswith('#'))
-        text = '\n'.join([line for line in lines if keep(line)])
-        
-        df = pd.read_csv(io.StringIO(text), sep=r'\s+', names=DeepTMHMMFile.fields)
+        df = DeepTMHMMFile._parse_gff3(path)
 
+        if os.path.exists(path.replace('.gff3', '.3line')):
+            # print(f'DeepTMHMMFile: Found 3line file at {path.replace('.gff3', '.3line')}')
+            df = df.merge(DeepTMHMMFile._parse_3line(path.replace('.gff3', '.3line')), left_index=True, right_index=True)
+        
         obj = cls()
         obj.df = df
         return obj 
@@ -38,7 +73,7 @@ class TMHMMFile():
     patterns['num_aa_in_tmhs'] = r'# (?P<gene_id>[^\s]+) Exp number of AAs in TMHs:\s+(?P<value>[\d\.]+)'
     # If the first TMH could also be interpreted as a signal peptide, there is a POSSIBLE N-term signal sequence flag. 
 
-    fields = ['gene_id', 'version', 'location', 'start', 'end']
+    fields = ['gene_id', 'version', 'annotation', 'start', 'end']
 
     def __init__(self, path:str=None):
         self.path = path  

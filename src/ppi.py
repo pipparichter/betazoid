@@ -25,19 +25,58 @@ def _get_residue(idx, token_chain_ids:np.ndarray):
     return (chain_id, idx - chain_start_idxs[chain_id])
 
 
-def get_contact_idxs(contact_probs:np.ndarray, token_chain_ids:np.ndarray, min_contact_prob=0.3):
+def get_contact_idxs(scores:np.ndarray, ids:np.ndarray, min_score:float=None):
     '''Use the contact_probs in the AlphaFold output to locate potential inter-chain residue contacts.
     
-    :param contact_probs: A square numpy array the contact_probs for a given structure. 
+    :param scores: A square numpy array the contact_probs for a given structure. 
+    :param ids: Either chain_ids or token_chain_ids. 
     :param idx: The zero-indexed contact location relative to the token_chain_ids array. 
-    :param min_contact_prob: The minimum contact_prob to say whether or not two residues are likely to be in contact. 
+    :param min_score: The minimum score to say whether or not two residues are likely to be in contact. 
     :returns: A list of two-tuples containing the contact_probs_df indices where contacts occur.
     '''
-    assert isinstance(contact_probs, np.ndarray), f'get_contact_idxs: Expected contact_probs to be a numpy array, but got {type(contact_probs)}'
-    mask = (contact_probs > min_contact_prob) # Require a minimum contact probability. 
-    mask = mask & (np.expand_dims(token_chain_ids, axis=1) != np.expand_dims(token_chain_ids, axis=0))  # Don't include intra-chain contacts. 
+    assert isinstance(scores, np.ndarray), f'get_contact_idxs: Expected scores to be a numpy array, but got {type(scores)}'
+    mask = (scores > min_score) # Require a minimum contact probability. 
+    mask = mask & (np.expand_dims(ids, axis=1) != np.expand_dims(ids, axis=0))  # Don't include intra-chain contacts. 
     mask[np.tril_indices_from(mask, k=-1)] = False # Don't include duplicate contacts, as the matrix is symmetric.
     return list(zip(*np.where(mask))) # Gets the contact indices as a list of two-tuples (i1, j1), (12, j2), ...
+
+
+
+def get_contacts_pooled(output, min_iptm:float=0.1):
+    '''Obtain protein-protein interactions from the pooled AlphaFold co-fold, based on the ipTM scores.
+    This approach is based on the work presented in https://www.biorxiv.org/content/10.1101/2025.07.01.662654v2. 
+    
+    :param 
+    :param 
+    :return
+    ''' 
+    pae_mins = output.get_chain_pair_pae_mins(mean_pool=False, best_model=False)
+    ptms = output.get_chain_ptms(mean_pool=False, best_model=False)
+    iptms = output.get_chain_pair_iptms(mean_pool=False, best_model=False)
+
+    chain_ids = np.unique(np.array(output.get_chain_ids()))
+    chains = output.get_chain_id_to_chain_map()
+
+    df = list()
+    for model in iptms.keys():
+
+        contact_idxs = get_contact_idxs(np.array(iptms[model]), chain_ids, min_score=min_iptm) # This is a list of two-tuples.
+        for idxs in contact_idxs:
+            row = dict()
+            for i, idx in enumerate(idxs):
+                row[f'chain_id_{i}'] = chain_ids[idx]
+                row[f'seq_{i}'] = chains.get(row[f'chain_id_{i}'], None) # Only the protein chains are in the chains dictionary, but there could be contacts defined with ligands.
+                row[f'ptm_{i}'] = ptms[model][idx]
+            row['pae_min'] = pae_mins[model][idxs[0]][idxs[1]] # PAE is not symmetric. 
+            row['iptm'] = iptms[model][idxs[0]][idxs[1]] # PAE is not symmetric. 
+            row['name'] = output.name 
+            row['model'] = model
+
+            df.append(row)
+    if len(df) == 0:
+        print(f'get_contacts: No contacts found for {output.name}')
+    return pd.DataFrame(df)
+
 
 
 # NOTE: Everything here should be zero-indexed. 

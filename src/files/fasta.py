@@ -81,7 +81,6 @@ class FASTAFile():
     @staticmethod
     def _from_file(path:str):
         get_description = lambda record : ' ' if (type(record.description) != str) else record.description.replace(record.id, '')
-        
         records = [(record.id, record.seq, get_description(record)) for record in SeqIO.parse(path, 'fasta-pearson')]
         return list(zip(*records))
 
@@ -95,8 +94,21 @@ class FASTAFile():
         obj.descriptions = list(descriptions)
         # assert len(obj.seqs) == len(np.unique(obj.seqs)), f'FASTAFile.from_file: Some of the sequence IDs in {path} are not unique.'
         return obj 
-        
-            
+
+    @classmethod
+    def from_text(cls, text:str):
+        get_description = lambda record : ' ' if (type(record.description) != str) else record.description.replace(record.id, '')
+        records = [(record.id, record.seq, get_description(record)) for record in SeqIO.parse(io.StringIO(text), 'fasta-pearson')]
+
+        obj = cls()
+        ids, seqs, descriptions = list(zip(*records))
+        obj.seqs = [str(seq) for seq in seqs]
+        obj.ids = list(ids)
+        obj.descriptions = list(descriptions)
+        return obj
+
+
+     
     def to_df(self, parse_description:bool=False) -> pd.DataFrame:
 
         df = []

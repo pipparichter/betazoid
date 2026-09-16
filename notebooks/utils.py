@@ -77,8 +77,6 @@ FOLDSEEK_FIELD_MAP['prob'] = 'probability'
 FOLDSEEK_FIELDS = 'query target evalue gapopen pident fident nident qstart qend qlen tstart tend tlen alnlen bits cigar qseq tseq qheader theader qaln taln mismatch qcov tcov taxid taxname taxlineage lddt lddtfull qtmscore ttmscore alntmscore rmsd prob'
 FOLDSEEK_FIELDS = [FOLDSEEK_FIELD_MAP.get(field) for field in FOLDSEEK_FIELDS.split(' ')]
 
-today = date.today().strftime("%m%d%Y")
-
 INTERPROSCAN_FIELDS = ['gene_id', 'checksum', 'length', 'analysis', 'accession', 'description', 'start','stop', 'e_value', 'status', 'date', 'interpro_accession', 'interpro_description', 'go_terms', 'pathways']
 
 PROJECT_IDS = pd.read_csv('project_ids.csv', index_col=0).project_id.to_dict()
@@ -94,7 +92,7 @@ plt.rcParams['axes.prop_cycle'] = cycler(color=colors)
 START_CODONS = ['ATG', 'GTG', 'TTG']
 STOP_CODONS = ['TAA', 'TAG', 'TGA']
 
-reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
+get_reverse_complement = lambda seq : str(Seq(seq).reverse_complement())
 # get_gene_id = lambda path : os.path.basename(path).replace('_pred.txt', '').replace('genes_', '') # Remove the prefix and file extension. 
 get_gene_id = lambda string : re.search(r'orfm.bz_\d+\.\d+_\d+', string).group(0) if (re.search(r'orfm.bz_\d+\.\d+_\d+', string) is not None) else None
 get_genome_id = lambda string : re.search(r'bz_\d+', string).group(0)
@@ -105,6 +103,59 @@ get_codons = lambda nt_seq : [nt_seq[i:i + 3] for i in range(0, len(nt_seq), 3)]
 REDUCED_ALPHABET = {'A':'A', 'V':'A', 'L':'A', 'I':'A', 'M':'A', 'F':'R', 'W':'R','Y':'R','K':'+','R':'+','H':'+','D':'-','E':'-','S':'P','T':'P','N':'P','Q':'P','G':'G','P':'P','C':'C', '.':'.'}
 HYDROPHOBICITY_SCALE = {'I': 4.5, 'V': 4.2, 'L': 3.8, 'F': 2.8, 'C': 2.5,'M': 1.9, 'A': 1.8, 'G': -0.4, 'T': -0.7, 'S': -0.8,'W': -0.9, 'Y': -1.3, 'P': -1.6, 'H': -3.2, 'E': -3.5,'Q': -3.5, 'D': -3.5, 'N': -3.5, 'K': -3.9, 'R': -4.5}
 CHARGE_SCALE = {'D': -1, 'E': -1, 'K': 1, 'R': 1, 'H': 0, 'A': 0, 'C': 0, 'F': 0, 'G': 0, 'I': 0, 'L': 0, 'M': 0, 'N': 0, 'P': 0, 'Q': 0, 'S': 0, 'T': 0, 'V': 0, 'W': 0, 'Y': 0}
+
+
+
+def plot_entropy(msa:MSAFile, max_entropy=0.2, x_min=20, x_max=70, ax:plt.Axes=None, color:str='gray', alphabet:dict=None, annotate:bool=False, max_gap_fraction=0.2):
+    '''Plot the positional entropy for a multi-sequence alignment.
+    
+    :param msa:
+    :param max_entropy:
+    '''
+    entropy = msa.get_entropy(alphabet=alphabet, max_gap_fraction=max_gap_fraction)
+
+    ax.plot(np.arange(len(entropy)), entropy, color=color)
+
+    if annotate:
+        conserved_idxs = np.where((entropy < max_entropy) & (~np.isnan(entropy)))[0] 
+        # conserved_idxs = [idx for idx in conserved_idxs if (msa.gap_symbol not in msa.to_array().T[idx])] # Remove indices that look conserved but have a gap. 
+        conserved_aas = [np.unique(msa.to_array().T[idx]) for idx in conserved_idxs]
+        for idx, aas in zip(conserved_idxs, conserved_aas):
+            if (idx > x_max) or (idx < x_min):
+                continue
+            ax.text(idx, ax.get_ylim()[-1] + 0.05, '/'.join(aas), ha='center', fontsize='xx-small', rotation=90)
+            ax.axvline(idx, color='black', lw=0.5)
+
+    x_ticks = np.arange(x_min, x_max, 2)
+    ax.set_xticks(x_ticks, labels=x_ticks, fontsize='xx-small')
+    ax.set_xlim(xmin=x_min, xmax=x_max)
+    ax.set_ylabel('entropy')
+    ax.set_xlabel('position')
+
+
+def plot_orfs(figure_df:pd.DataFrame, palette=dict(), color_by:str='cluster_id', ax=None):
+
+    figure_df = figure_df.sort_values('genome_id')
+    figure_df['genome_num'] = pd.factorize(figure_df.genome_id)[0]
+
+    for row in figure_df.drop_duplicates('genome_id').itertuples():
+        ax.hlines(y=row.genome_num, color='black', xmin=0, xmax=row.genome_size, zorder=-1)
+
+    for row in figure_df.itertuples():
+        color = palette.get(getattr(row, color_by), 'lightgray')
+        z_order = -1 if (color == 'black') else 1
+        ax.hlines(y=[row.genome_num], xmin=row.start, xmax=row.stop, linewidth=5, color=color, zorder=z_order)
+        if row.strand == '+':
+            ax.scatter([row.stop], [row.genome_num], s=70, marker='>', color=color, zorder=z_order)
+        elif row.strand == '-':
+            ax.scatter([row.start], [row.genome_num], s=70, marker='<', color=color, zorder=z_order)
+
+    ax.set_xlim(xmin=0, xmax=figure_df.genome_size.max())
+    ax.set_yticks(figure_df.genome_num.unique(), labels=figure_df.genome_id.unique())
+    ax.set_xticks(np.arange(0, 22000, 1000), labels=np.arange(0, 22000, 1000), rotation=90)
+    ax.set_xlabel('position')
+
+
 
 
 def plot_hydrophobicity(msa:MSAFile, window_size:int=5, step_size:int=1, x_min:int=0, x_max:int=100, ax:plt.Axes=None, legend:bool=False, palette=dict()):
@@ -132,7 +183,7 @@ def plot_hydrophobicity(msa:MSAFile, window_size:int=5, step_size:int=1, x_min:i
     y = np.array(y)
     y_mean = [get_mean(y_.astype(float)) for y_ in y.T]
 
-    ax.scatter(x, y_mean, color='black', zorder=100)
+    # ax.scatter(x, y_mean, color='black', zorder=100)
 
     ax.set_ylabel('hydrophobicity')
     ax.set_xlabel('position')
@@ -142,16 +193,6 @@ def plot_hydrophobicity(msa:MSAFile, window_size:int=5, step_size:int=1, x_min:i
         ax.legend()
 
 
-
-def get_msas_unpaired(gene_ids:list, dir_path:str='../data/genes/mmseqs/'):
-    '''Load the unpaired MSAs for the specified gene IDs.
-    
-    :param gene_ids: The IDs of the genes to construct paired MSAs for. These should all be from the same genome.   
-    :param dir_path: The path to the directory where the MSAs are stored. This function assumes the a3m files have names matching the gene ID of the query 
-        sequence. 
-    '''
-    paths = {gene_id:os.path.join(dir_path, f'{gene_id}.a3m') for gene_id in gene_ids}
-    return {gene_id:str(FASTAFile.from_file(path)) for gene_id, path in paths.items()}
 
 
  
