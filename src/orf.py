@@ -27,7 +27,7 @@ def _get_orfs(nt_seq:str, min_length:int=30, start_codons:list=START_CODONS):
 
     rows = list()
     for i in start_codon_idxs:
-        row = {'start_codon':codons[i], 'start_codon_idx':i}
+        row = {'start_codon':codons[i]}
         row['nt_seq'] = ''.join(codons[i:])
         row['seq'] = get_seq(row['nt_seq'])
         if len(row['seq']) < min_length:
@@ -37,8 +37,11 @@ def _get_orfs(nt_seq:str, min_length:int=30, start_codons:list=START_CODONS):
     return rows
 
 
+def orf_adjust_coordinates():
+    pass
 
-def orf_get_alternate(start:int, stop:int, strand:int, extension_length:int=30, contig:str=None, frame_shift:int=0, min_length:int=30, start_codons:list=START_CODONS):
+
+def orf_get_alternates(start:int, stop:int, strand:int, extension_length:int=30, contig:str=None, frame_shift:int=0, min_length:int=30, start_codons:list=START_CODONS):
     '''Extend the gene between start and stop at the N-terminus by the specified number amino acids, ignoring any in-frame stop codons.
     Then obtain the corresponding extended sequences, as well as all in-frame subsequences within the extended region starting from a valid start codon.
 
@@ -53,26 +56,31 @@ def orf_get_alternate(start:int, stop:int, strand:int, extension_length:int=30, 
     :param start_codons: The list of start codons to consider when looking for alternate start sites. 
     :returns:
     '''
+    assert ((stop - start) % 3) == 2, 'orf_get_alternates: Gene coordinates are not one-indexed inclusive.'
+
+    start = start - 1
 
     if strand == '-':
         old_start, old_stop = start, stop
-        start = (len(contig) - old_stop) + 1
-        stop = (len(contig) - old_start) + 1
+        start = (len(contig) - old_stop) 
+        stop = (len(contig) - old_start)
         contig = get_reverse_complement(contig)
 
-    extension_stop = (start - 1) - frame_shift # Extended region will end at the start position. Apply a frame shift, if specified.
+    extension_stop = start - frame_shift # Extended region will end at the start position. Apply a frame shift, if specified.
     extension_start = extension_stop - (3 * extension_length)
 
     assert extension_start > 0,  f'orf_get_alternates: Extension start coordinate cannot be negative, so {extension_start} is invalid.'
 
-    nt_seq = contig[extension_start:extension_stop] + contig[start - 1:stop]
-    # codons = get_codons(nt_seq)
-    # df = [{'start_codon':codons[0], 'start_codon_idx':0, 'nt_seq':nt_seq, 'seq':get_seq(nt_seq)}]
+    nt_seq = contig[extension_start:extension_stop] + contig[start:stop]
+    
+    assert (len(contig[start:stop]) % 3) == 0, f'orf_get_alternates: Expected the original ORF to have a length divisible by 3.'
+    assert contig[start:start + 3] in START_CODONS, f'orf_get_alternates: Expected the region to start with a start codon, but got {contig[start:start + 3]}.'
+     
     df = list()
     df += _get_orfs(nt_seq, min_length=min_length, start_codons=start_codons)
     df = pd.DataFrame(df)
     df['frame_shift'] = frame_shift
-    df['original_length'] = (((stop - start) + 1)) // 3
+    df['original_length'] = (stop - start) // 3
     df['length'] = df.seq.str.replace(r'\*', '').apply(len)
     return df
 

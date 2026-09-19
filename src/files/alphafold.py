@@ -210,7 +210,12 @@ class AlphaFoldOutput():
         return confidences 
 
 
-    def __init__(self, dir_=None, version:int=3):
+    def __init__(self, dir_=None, version:int=4):
+        '''
+        
+        :param version
+        '''
+        assert os.path.isdir(dir_), f'AlphaFoldOutput.__init__: Directory {dir_} does not exist.'
         # Paths to the confidence output for each model. 
         self.dir_ = os.path.abspath(dir_)
         self.version = version 
@@ -219,6 +224,7 @@ class AlphaFoldOutput():
         self.name = os.path.basename(dir_)
 
         self.inputs = load_json(os.path.join(dir_, f'{self.name}_data.json'))
+        assert self.inputs is not None, f'AlphaFoldOutput.__init__: Failed to load inputs file {os.path.join(dir_, f'{self.name}_data.json')}'
 
         get_chain_ids = lambda entry : list(entry.values())[0]['id'] # info['id'] is a list if there are multiple copies.
         self.chain_ids = np.ravel([get_chain_ids(entry) for entry in self.inputs['sequences']]).tolist()
@@ -279,14 +285,15 @@ class AlphaFoldOutput():
     def get_chain_pair_iptms(self, mean_pool:bool=False, models:list=None, best_model:bool=False):
         return self._get_summary_data('chain_pair_iptm', mean_pool=mean_pool, models=models, best_model=best_model)
 
-    
+    def get_atom_plddts(self, mean_pool:bool=False, models:list=None, best_model:bool=False):
+        return self._get_full_data('atom_plddts', mean_pool=mean_pool, models=models, best_model=best_model)
 
     def _get_full_data(self, field:str='contact_probs', mean_pool:bool=False, models:list=None, best_model:bool=False):
         '''
         
         '''
 
-        assert field in ['contact_probs', 'pae'], f'AlphaFoldOutput._get_full_data: Input field {field} is not recognized.'
+        assert field in ['contact_probs', 'pae', 'atom_plddts'], f'AlphaFoldOutput._get_full_data: Input field {field} is not recognized.'
         models = list(self.confidences.keys()) if (models is None) else models
 
         if best_model:
@@ -313,7 +320,6 @@ class AlphaFoldOutput():
     def _parse_inputs(self):
         '''Convert the chain information stored in the input file to a pandas DataFrame.'''
         df = list()
-        print(self.inputs['sequences'])
         for entry in self.inputs['sequences']: # All chains, including the ligands and ions, are stored under sequences. 
             chain_type, entry = list(entry.items())[0]
             chain_ids = [entry['id']] if isinstance(entry['id'], str) else entry['id']

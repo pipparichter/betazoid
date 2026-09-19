@@ -8,7 +8,6 @@ from dataclasses import dataclass
 import shutil 
 import os
 import re
-import argparse
 import glob 
 import subprocess
 
@@ -24,7 +23,7 @@ MIN_SEQ_IDENTITY = 0.95
 MIN_COVERAGE = 0.95 
 COVERAGE_MODE = 5
 SENSITIVITY = 9.5
-NUM_ITERATIONS = 1
+NUM_ITERATIONS = 5 
 
 @dataclass
 class Databases:
@@ -34,18 +33,18 @@ class Databases:
     output_msa: str
 
 
-def msa_build_a3m_cleanup(msa_paths:list, database_dir:str=None):
+def msa_get_a3m_cleanup(msa_paths:list, database_dir:str=None, database_name:str=None):
     '''Clean up the databases and directories created for MSA generation.
     
     :param msa_paths: A list of output MSAs to remove from the output directory. These are the MSAs failing the keep_msa condition
-        defined in the msa_build_a3m function. 
+        defined in the msa_get_a3m function. 
     :returns: None
     '''
-    for path in glob.glob(os.path.join(database_dir, f'{DATABASE_NAME}*')): 
+    for path in glob.glob(os.path.join(database_dir, f'{database_name}*')): 
         os.remove(path)
     shutil.rmtree(TMP_DIR, ignore_errors=True)
 
-    print(f'msa_build_a3m_cleanup: Removing {len(msa_paths)} output MSAs which do not match a specified query ID.')
+    print(f'msa_get_a3m_cleanup: Removing {len(msa_paths)} output MSAs which do not match a specified query ID.')
     for msa_path in msa_paths:
         os.remove(msa_path)
 
@@ -91,22 +90,32 @@ def msa_dereplicate(path, output_dir=None, query_gene_ids:list=None, min_seq_ide
         cluster_df['is_query'] = cluster_df.gene_id.isin(query_gene_ids)
         cluster_df = cluster_df.sort_values('is_query', ascending=False)
 
-    cluster_df = cluster_df.drop_duplicates('rep_gene_id')
-    assert np.all(np.isin(query_gene_ids, cluster_df.gene_id.unique())), f'msa_dereplicate: Some query IDs are missing from the set of dereplicated sequences.'
+    # If two queries end up in the same cluster, this can cause problems, because one will be dropped either way, causing this to throw an error.
+    # Therefore, we take the union of the query IDs and de-replicated sequences. 
+    filter_ = ~cluster_df.duplicated('rep_gene_id', keep='first')
+    gene_ids = cluster_df[filter_].gene_id.unique() # First pass of dereplicated gene IDs. 
+    # assert np.all(np.isin(query_gene_ids, gene_ids)), f'msa_dereplicate: Some query IDs are missing from the set of dereplicated sequences.'
+    if not np.all(np.isin(query_gene_ids, gene_ids)):
+        print(f'msa_dereplicate: Some of the query IDs were dropped by dereplication. Manually adding {(~np.isin(query_gene_ids, gene_ids)).sum()} IDs.')
+        gene_ids = np.unique(gene_ids.tolist() + list(query_gene_ids))
+
+    print(f'msa_dereplicate: {len(cluster_df)} sequences in the input file.')
+    print(f'msa_dereplicate: {len(gene_ids)} sequences remaining after dereplication.')
 
     reps_df = FASTAFile.from_file(path).to_df()
-    reps_df = reps_df.loc[cluster_df.gene_id.values].copy()
+    reps_df = reps_df.loc[gene_ids].copy()
+    reps_df = reps_df[~reps_df.index.duplicated(keep='first')].copy()
     FASTAFile.from_df(reps_df).write(os.path.join(output_dir, f'{name}_reps.faa'))
 
     msa_dereplicate_cleanup(output_path)
 
-    print(f'msa_dereplicate: {len(reps_df)} representative sequences when clustered at {min_seq_identity} minimum identity.')
+    # print(f'msa_dereplicate: {len(reps_df)} representative sequences when clustered at {min_seq_identity} minimum identity.')
     return reps_df, os.path.join(output_dir, f'{name}_reps.faa')
 
 
 
 
-def msa_build_a3m(path:str, output_dir:str=None, query_gene_ids:list=None, database_dir:str=None, sensitivity=SENSITIVITY, num_iterations:int=NUM_ITERATIONS, **kwargs):
+def msa_get_a3m(path:str, output_dir:str=None, query_gene_ids:list=None, database_dir:str=None, sensitivity=SENSITIVITY, num_iterations:int=NUM_ITERATIONS, database_name:str='tmp', **kwargs):
     '''Use MMseqs align utilities to construct a3m-format alignment files for each sequence in the input FASTA file. The pipeline
     is as follows:
         (1) Use the input FASTA file to construct an MMseqs database. 
@@ -122,11 +131,11 @@ def msa_build_a3m(path:str, output_dir:str=None, query_gene_ids:list=None, datab
         sequences as the reference sequence are removed from output_dir. 
     :param sensitivity: The search sensitivity for the initial MMseqs search step. 
     '''
-    database_path = os.path.join(database_dir, DATABASE_NAME)
+    database_path = os.path.join(database_dir, database_name)
     databases = Databases(database_path, f'{database_path}.out', f'{database_path}.aln', f'{database_path}.msa')
 
-    print(f'msa_build_a3m: num_iterations = {num_iterations}')
-    print(f'msa_build_a3m: sensitivity = {sensitivity}')
+    print(f'msa_get_a3m: num_iterations = {num_iterations}')
+    print(f'msa_get_a3m: sensitivity = {sensitivity}')
 
     kwargs = {'shell':True, 'check':True, 'stdout':subprocess.DEVNULL}
     cmds = [f'mmseqs createdb {path} {databases.input}']
@@ -136,7 +145,7 @@ def msa_build_a3m(path:str, output_dir:str=None, query_gene_ids:list=None, datab
     cmds += [f'mmseqs unpackdb {databases.output_msa} {output_dir} --unpack-suffix .a3m']
 
     for cmd in cmds:
-        print('msa_build_a3m:', cmd)
+        print('msa_get_a3m:', cmd)
         subprocess.run(cmd, **kwargs)
 
     msa_paths = list()
@@ -155,103 +164,10 @@ def msa_build_a3m(path:str, output_dir:str=None, query_gene_ids:list=None, datab
 
         msa_paths.append(new_path)
 
-    print(f'msa_build_a3m: Generated {len(msa_paths)} total MSAs.')
+    print(f'msa_get_a3m: Generated {len(msa_paths)} total MSAs.')
     pattern = '|'.join([gene_id.replace('.', r'\.') for gene_id in query_gene_ids]) if (query_gene_ids is not None) else r'.*'
     keep_msa = lambda msa_path : re.search(pattern, msa_path) is not None 
 
-    msa_build_a3m_cleanup([msa_path for msa_path in msa_paths if (not keep_msa(msa_path))], database_dir=database_dir)
+    msa_get_a3m_cleanup([msa_path for msa_path in msa_paths if (not keep_msa(msa_path))], database_dir=database_dir, database_name=database_name)
 
     return [msa_path for msa_path in msa_paths if keep_msa(msa_path)]
-
-
-# def msa_print_stats(msa_paths):
-
-#     get_num_insertions = lambda seq : sum(char.islower() for char in seq)
-#     get_num_deletions = lambda seq : seq.count('-')
-
-
-#     for path in msa_paths:
-#         print(f'\n{os.path.basename(path)}')
-#         fasta_file = FASTAFile.from_file(path)
-#         print('Query length:', len(fasta_file.seqs[0]))
-#         print('Number of sequences:',len(fasta_file) - 1)
-#         print('Average number of insertions:', f'{np.mean([get_num_insertions(seq) for seq in fasta_file.seqs[1:]]):.2f}')
-#         print('Average number of deletions:',  f'{np.mean([get_num_deletions(seq) for seq in fasta_file.seqs[1:]]):.2f}')
-
-
-def msa_build_afa(path:str, name:str=None, output_dir:str=None, max_gap_fraction:float=0.8, **kwargs):
-    '''
-
-    :param max_gap_fraction: If more than this fraction of the sequences have a gap at any position, then trim the column. 
-    
-    '''
-
-    # msa_file_name, _ = os.path.splitext(os.path.basename(path))
-    msa_path = os.path.join(output_dir, f'{name}.afa')
-    trimmed_msa_path = os.path.join(output_dir, f'{name}.trimmed.afa')
-    path, msa_path = os.path.abspath(path), os.path.abspath(msa_path)
-    trimmed_msa_path = os.path.abspath(trimmed_msa_path)
-
-    cmds = [f'muscle -align {path} -output {msa_path}']
-    cmds += [f'clipkit {msa_path} -o {trimmed_msa_path} -g {max_gap_fraction} --log']
-    # cmds += [f'clipkit {msa_path} -o {trimmed_msa_path} -g {max_gap_fraction} --log {trimmed_msa_log_path}']
-    for cmd in cmds:
-        print('msa_build_afa:', cmd)
-        subprocess.run(cmd, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return [trimmed_msa_path]
-    
-
-
-def msa_main(path:str, fmt:str='afa', name:str=None, output_dir:str=None, database_dir:str=None, query_gene_ids:list=None, **kwargs):
-    '''Run the msa_dereplicate and msa_build_a3m functions in succession. 
-
-    :param path: The path to the FASTA file containing all sequences to use in MSA construction.
-    :param fmt: The type of MSA to generate. 
-    :param output_dir: The directory where all final a3m files will be deposited. 
-    :param database_dir: The directory for the intermediate MMseqs databases..    
-    :param query_gene_ids: The IDs of sequences which will be input to AlphaFold, and therefore require an af3 MSA where they are the 
-        reference sequence (i.e. in the first line of the file). If this argument is specified, all MSAs which do not use one of these 
-        sequences as the reference sequence are removed from output_dir. 
-    :returns: A list of the final paths to the MSAs in a3m format.
-    '''
-    # print(f'msa_main: Output directory is {output_dir}')
-    # print(f'msa_main: Database directory is {database_dir}')
-
-
-    name = os.path.splitext(os.path.basename(path))[0] if (name is None) else name
-
-    _, path = msa_dereplicate(path, query_gene_ids=query_gene_ids, output_dir=output_dir, **kwargs)
-
-    if fmt == 'a3m':
-        msa_paths = msa_build_a3m(path, database_dir=database_dir, query_gene_ids=query_gene_ids, output_dir=output_dir, name=name, **kwargs)
-    elif fmt == 'afa':
-        msa_paths = msa_build_afa(path, name=name, output_dir=output_dir, **kwargs)
-    else:
-        raise Exception(f'msa_main: Format {fmt} is invalid.')
-
-    # msa_print_stats(msa_paths)
-    return msa_paths
-
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('path', type=str)
-    parser.add_argument('--fmt', required=True, type=str, default='afa')
-    parser.add_argument('--name', required=False, type=str, default=None)
-    parser.add_argument('--query-gene-ids', default=None, nargs='+')    
-    parser.add_argument('--output-dir', type=str, default=None)
-    parser.add_argument('--database-dir', type=str, default='/home/prichter/Documents/banfield/betazoid/data/genes/mmseqs/db')
-    # Arguments for msa_build_a3m.
-    parser.add_argument('--sensitivity', type=float, default=SENSITIVITY)
-    # Arguments for msa_dereplicate.
-    parser.add_argument('--min-seq-identity', type=float, default=MIN_SEQ_IDENTITY)
-    parser.add_argument('--coverage-mode', type=int, default=COVERAGE_MODE)
-    parser.add_argument('--min-coverage', type=float, default=MIN_COVERAGE)
-
-    args = parser.parse_args()
-
-    if args.output_dir is None:
-        args.output_dir = OUTPUT_DIRS[args.fmt]
-
-    msa_main(args.path, **vars(args))

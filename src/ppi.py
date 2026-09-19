@@ -45,7 +45,7 @@ def get_contact_idxs(scores:np.ndarray, ids:np.ndarray, min_score:float=None):
 def get_contacts_pooled(output, min_iptm:float=0.1):
     '''Obtain protein-protein interactions from the pooled AlphaFold co-fold, based on the ipTM scores.
     This approach is based on the work presented in https://www.biorxiv.org/content/10.1101/2025.07.01.662654v2. 
-    
+
     :param 
     :param 
     :return
@@ -91,7 +91,7 @@ def get_contacts(output, min_contact_prob:float=0.5):
 
     df = list()
     for model in contact_probs.keys():
-        contact_idxs = get_contact_idxs(contact_probs[model], token_chain_ids=token_chain_ids, min_contact_prob=min_contact_prob)
+        contact_idxs = get_contact_idxs(contact_probs[model], ids=token_chain_ids, min_score=min_contact_prob)
 
         for idxs in contact_idxs:
             row = dict()
@@ -184,7 +184,8 @@ def get_contact_graph(contacts_df, edge_types:list=None, min_contact_prob:float=
     return graph 
 
 
-def get_contact_profile(contacts_df, node_type:str='cluster_3', edge_types=None, min_contact_prob:float=0, metric:str='num_contacts', max_position:int=None):
+def get_contact_profile(contacts_df, node_type:str=None, edge_types=None, min_contact_prob:float=0, metric:str='num_contacts', max_position:int=None):
+    ''''''
     
     assert metric in ['num_contacts', 'has_contact'], f'get_contact_profile: Specified metric {metric} is invalid.'
     graph = get_contact_graph(contacts_df, edge_types=edge_types, min_contact_prob=min_contact_prob)
@@ -192,7 +193,9 @@ def get_contact_profile(contacts_df, node_type:str='cluster_3', edge_types=None,
     df = pd.DataFrame(graph.degree, columns=['node_id', 'num_contacts']) # Now each entry in the DataFrame is (1) a node and (2) the number of contacts the node participates in.
     df['has_contact'] = np.where(df.num_contacts > 0, 1, 0)
     df['position'] = df.node_id.apply(get_position) # n is the position encoded
-    df = df[df.node_id.apply(get_node_type) == node_type].copy()
+
+    if node_type is not None:
+        df = df[df.node_id.apply(get_node_type) == node_type].copy()
 
     assert len(df) > 0, 'get_contact_profile: No contacts to plot!'
 
@@ -203,7 +206,7 @@ def get_contact_profile(contacts_df, node_type:str='cluster_3', edge_types=None,
     return df[metric].values
 
 
-def plot_contact_profile(contacts_df, node_type:str='cluster_3', edge_types=None, ax:plt.Axes=None, x_min:int=0, x_max:int=100, min_contact_prob:float=0, metric:str='num_contacts', **kwargs):
+def plot_contact_profile(contacts_df, node_type:str=None, edge_types=None, ax:plt.Axes=None, x_min:int=0, x_max:int=100, min_contact_prob:float=0, metric:str='num_contacts', **kwargs):
     '''Construct a networkx Graph object using the contacts in the contacts_df.
 
     :param contacts_df:
@@ -213,9 +216,6 @@ def plot_contact_profile(contacts_df, node_type:str='cluster_3', edge_types=None
 
     figure_df = pd.DataFrame({metric:get_contact_profile(contacts_df, node_type=node_type, edge_types=edge_types, metric=metric, min_contact_prob=min_contact_prob)})
     figure_df = figure_df.reset_index(names='position', drop=False)
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(0.1 * len(figure_df), 4))
 
     color = kwargs.get('color', 'gray')
     alpha = kwargs.get('alpha', 1)

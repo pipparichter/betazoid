@@ -74,8 +74,11 @@ FOLDSEEK_FIELD_MAP['alntmscore'] = 'alignment_tm_score'
 FOLDSEEK_FIELD_MAP['rmsd'] = 'rmsd'
 FOLDSEEK_FIELD_MAP['prob'] = 'probability'
 
-FOLDSEEK_FIELDS = 'query target evalue gapopen pident fident nident qstart qend qlen tstart tend tlen alnlen bits cigar qseq tseq qheader theader qaln taln mismatch qcov tcov taxid taxname taxlineage lddt lddtfull qtmscore ttmscore alntmscore rmsd prob'
-FOLDSEEK_FIELDS = [FOLDSEEK_FIELD_MAP.get(field) for field in FOLDSEEK_FIELDS.split(' ')]
+FOLDSEEK_SEARCH_FIELDS = 'query,target,evalue,gapopen,pident,fident,nident,qstart,qend,qlen,tstart,tend,tlen,alnlen,bits,cigar,qseq,tseq,qheader,theader,qaln,taln,mismatch,qcov,tcov,lddt,lddtfull,qtmscore,ttmscore,alntmscore,rmsd,prob'
+# FOLDSEEK_SEARCH_FIELDS = 'query target evalue gapopen pident fident nident qstart qend qlen tstart tend tlen alnlen bits cigar qseq tseq qheader theader qaln taln mismatch qcov tcov taxid taxname taxlineage lddt lddtfull qtmscore ttmscore alntmscore rmsd prob'
+FOLDSEEK_SEARCH_FIELDS = [FOLDSEEK_FIELD_MAP.get(field) for field in FOLDSEEK_SEARCH_FIELDS.split(',')]
+
+SIGNALP_FIELDS = ['gene_id', 'prediction', 'other', 'sp_sec_spi', 'lipo_sec_spii', 'tat_tat_spi', 'tatlipo_tat_spii', 'pilin_sec_spiii', 'cleavage_site_position']
 
 INTERPROSCAN_FIELDS = ['gene_id', 'checksum', 'length', 'analysis', 'accession', 'description', 'start','stop', 'e_value', 'status', 'date', 'interpro_accession', 'interpro_description', 'go_terms', 'pathways']
 
@@ -214,7 +217,7 @@ def map_dssp_to_msa(msa, dssp_output_dir:str='../data/genes/dssp/'):
     return MSAFile.from_array(arr, ids)
 
 
-def get_fold_metadata(paths:str, output_path:str=None, parser=AlphaFoldOutput) -> pd.DataFrame:
+def get_fold_metadata(paths:str, output_path:str=None, parser=AlphaFoldOutput, include_plddts:bool=False) -> pd.DataFrame:
     '''Collect metadata about the AlphaFold or ColabFoldjobs stored at the given paths in a pandas DataFrame. 
 
     :param paths: A list of paths specifying the output location. For AlphaFoldOutputs, this is a directory name. For
@@ -232,7 +235,9 @@ def get_fold_metadata(paths:str, output_path:str=None, parser=AlphaFoldOutput) -
     for path in tqdm(paths, desc='get_fold_metadata'):
 
         output = parser(path)
-        assert len(output.get_chain_to_chain_id_map(chain_type='protein')) == 1, f'get_fold_metadata: Expected 1 unique protein per structure, but got {output.get_num_proteins()} in {path}'
+
+        chain_to_chain_id_map = output.get_chain_to_chain_id_map(chain_types=['protein'])
+        assert len(chain_to_chain_id_map) == 1, f'get_fold_metadata: Expected 1 unique protein per structure, but got {output.get_num_proteins()} in {path}'
 
         row = dict()
         row['path'] = os.path.abspath(path)
@@ -244,12 +249,27 @@ def get_fold_metadata(paths:str, output_path:str=None, parser=AlphaFoldOutput) -
         row['iptm_best_model'] = output.get_iptms(best_model=True)
         row['ptm_best_model'] = output.get_ptms(best_model=True)
         row['num_seeds'] = output.get_num_seeds()
-        row['num_protein_chains'] = len(output.get_chain_ids(chain_type='protein'))
-        row['num_proteins'] = len(output.get_chain_to_chain_id_map(chain_type='protein'))
+        row['num_protein_chains'] = len(output.get_chain_ids(chain_types=['protein']))
+        row['num_proteins'] = len(chain_to_chain_id_map)
 
         if isinstance(output, ColabFoldOutput):
             row.update(output.get_msa_metadata()[0])
             row['plddts_best_model'] = output.get_plddts(best_model=True)
+            row['mean_plddt_best_model'] = np.mean(row['plddts_best_model'])
+
+        # Loading the full data JSON file can be time-consuming, so only do this if the option is specified.
+        if isinstance(output, AlphaFoldOutput) and include_plddts:
+            # There should only be one entry in the chain_to_chain_id_map (checked above). 
+            # AlphaFold3 outputs the per-atom pLDDT; splitting this array evenly into num_residues sections will probably not 
+            # correspond perfectly to the per-residue pLDDT, but will be a reasonable approximation. 
+            num_residues = len(list(chain_to_chain_id_map.keys())[0])
+            plddts_best_model = output.get_atom_plddts(best_model=True)
+
+            get_mean = lambda values : float(round(np.mean(values), 2))
+
+            row['mean_plddt_best_model'] = get_mean(plddts_best_model) # Store the mean before merging sub-arrays.
+            row['plddts_best_model'] = [get_mean(plddts) for plddts in np.array_split(plddts_best_model, num_residues)]
+
 
         df.append(row)
 

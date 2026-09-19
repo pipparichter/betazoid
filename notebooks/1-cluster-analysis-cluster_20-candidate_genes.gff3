@@ -1,0 +1,223 @@
+##gff-version 3
+# orfm.bz_0.1_45 Length: 69
+# orfm.bz_0.1_45 Number of predicted TMRs: 2
+orfm.bz_0.1_45	inside	1	20				
+orfm.bz_0.1_45	TMhelix	21	36				
+orfm.bz_0.1_45	outside	37	47				
+orfm.bz_0.1_45	TMhelix	48	59				
+orfm.bz_0.1_45	inside	60	69				
+//
+# orfm.bz_0.1_73 Length: 43
+# orfm.bz_0.1_73 Number of predicted TMRs: 0
+orfm.bz_0.1_73	signal	1	27				
+orfm.bz_0.1_73	outside	28	43				
+//
+# orfm.bz_0.1_114 Length: 97
+# orfm.bz_0.1_114 Number of predicted TMRs: 1
+orfm.bz_0.1_114	signal	1	27				
+orfm.bz_0.1_114	outside	28	64				
+orfm.bz_0.1_114	TMhelix	65	82				
+orfm.bz_0.1_114	inside	83	97				
+//
+# orfm.bz_0.1_184 Length: 91
+# orfm.bz_0.1_184 Number of predicted TMRs: 0
+orfm.bz_0.1_184	signal	1	30				
+orfm.bz_0.1_184	outside	31	91				
+//
+# orfm.bz_1.1_76 Length: 67
+# orfm.bz_1.1_76 Number of predicted TMRs: 1
+orfm.bz_1.1_76	outside	1	32				
+orfm.bz_1.1_76	TMhelix	33	42				
+orfm.bz_1.1_76	inside	43	67				
+//
+# orfm.bz_1.1_79 Length: 94
+# orfm.bz_1.1_79 Number of predicted TMRs: 1
+orfm.bz_1.1_79	outside	1	67				
+orfm.bz_1.1_79	TMhelix	68	77				
+orfm.bz_1.1_79	inside	78	94				
+//
+# orfm.bz_1.1_111 Length: 83
+# orfm.bz_1.1_111 Number of predicted TMRs: 0
+orfm.bz_1.1_111	signal	1	35				
+orfm.bz_1.1_111	outside	36	83				
+//
+# orfm.bz_1.1_135 Length: 88
+# orfm.bz_1.1_135 Number of predicted TMRs: 1
+orfm.bz_1.1_135	inside	1	12				
+orfm.bz_1.1_135	TMhelix	13	33				
+orfm.bz_1.1_135	outside	34	88				
+//
+# orfm.bz_2.1_10 Length: 79
+# orfm.bz_2.1_10 Number of predicted TMRs: 0
+orfm.bz_2.1_10	inside	1	79				
+//
+# orfm.bz_2.1_92 Length: 92
+# orfm.bz_2.1_92 Number of predicted TMRs: 1
+orfm.bz_2.1_92	outside	1	69				
+orfm.bz_2.1_92	TMhelix	70	79				
+orfm.bz_2.1_92	inside	80	92				
+//
+# orfm.bz_2.1_95 Length: 96
+# orfm.bz_2.1_95 Number of predicted TMRs: 1
+orfm.bz_2.1_95	signal	1	24				
+orfm.bz_2.1_95	outside	25	49				
+orfm.bz_2.1_95	TMhelix	50	71				
+orfm.bz_2.1_95	inside	72	96				
+//
+# orfm.bz_2.1_133 Length: 80
+# orfm.bz_2.1_133 Number of predicted TMRs: 2
+orfm.bz_2.1_133	inside	1	13				
+orfm.bz_2.1_133	TMhelix	14	34				
+orfm.bz_2.1_133	outside	35	45				
+orfm.bz_2.1_133	TMhelix	46	66				
+orfm.bz_2.1_133	inside	67	80				
+//
+# orfm.bz_3.1_94 Length: 90
+# orfm.bz_3.1_94 Number of predicted TMRs: 1
+orfm.bz_3.1_94	outside	1	67				
+orfm.bz_3.1_94	TMhelix	68	77				
+orfm.bz_3.1_94	inside	78	90				
+//
+# orfm.bz_3.1_97 Length: 63
+# orfm.bz_3.1_97 Number of predicted TMRs: 1
+orfm.bz_3.1_97	outside	1	26				
+orfm.bz_3.1_97	TMhelix	27	44				
+orfm.bz_3.1_97	inside	45	63				
+//
+# orfm.bz_4.1_71 Length: 49
+# orfm.bz_4.1_71 Number of predicted TMRs: 1
+orfm.bz_4.1_71	outside	1	4				
+orfm.bz_4.1_71	TMhelix	5	20				
+orfm.bz_4.1_71	inside	21	49				
+//
+# orfm.bz_4.1_110 Length: 40
+# orfm.bz_4.1_110 Number of predicted TMRs: 0
+orfm.bz_4.1_110	signal	1	34				
+orfm.bz_4.1_110	outside	35	40				
+//
+# orfm.bz_4.1_121 Length: 96
+# orfm.bz_4.1_121 Number of predicted TMRs: 1
+orfm.bz_4.1_121	signal	1	26				
+orfm.bz_4.1_121	outside	27	61				
+orfm.bz_4.1_121	TMhelix	62	82				
+orfm.bz_4.1_121	inside	83	96				
+//
+# orfm.bz_5.1_37 Length: 92
+# orfm.bz_5.1_37 Number of predicted TMRs: 2
+orfm.bz_5.1_37	inside	1	9				
+orfm.bz_5.1_37	TMhelix	10	30				
+orfm.bz_5.1_37	outside	31	44				
+orfm.bz_5.1_37	TMhelix	45	65				
+orfm.bz_5.1_37	inside	66	92				
+//
+# orfm.bz_5.1_74 Length: 92
+# orfm.bz_5.1_74 Number of predicted TMRs: 0
+orfm.bz_5.1_74	signal	1	23				
+orfm.bz_5.1_74	outside	24	92				
+//
+# orfm.bz_5.1_98 Length: 67
+# orfm.bz_5.1_98 Number of predicted TMRs: 1
+orfm.bz_5.1_98	signal	1	20				
+orfm.bz_5.1_98	outside	21	31				
+orfm.bz_5.1_98	TMhelix	32	46				
+orfm.bz_5.1_98	inside	47	67				
+//
+# orfm.bz_5.1_103 Length: 110
+# orfm.bz_5.1_103 Number of predicted TMRs: 1
+orfm.bz_5.1_103	signal	1	19				
+orfm.bz_5.1_103	outside	20	86				
+orfm.bz_5.1_103	TMhelix	87	104				
+orfm.bz_5.1_103	inside	105	110				
+//
+# orfm.bz_5.1_143 Length: 96
+# orfm.bz_5.1_143 Number of predicted TMRs: 0
+orfm.bz_5.1_143	signal	1	24				
+orfm.bz_5.1_143	outside	25	96				
+//
+# orfm.bz_7.1_99 Length: 68
+# orfm.bz_7.1_99 Number of predicted TMRs: 1
+orfm.bz_7.1_99	outside	1	31				
+orfm.bz_7.1_99	TMhelix	32	52				
+orfm.bz_7.1_99	inside	53	68				
+//
+# orfm.bz_7.1_105 Length: 93
+# orfm.bz_7.1_105 Number of predicted TMRs: 1
+orfm.bz_7.1_105	outside	1	72				
+orfm.bz_7.1_105	TMhelix	73	83				
+orfm.bz_7.1_105	inside	84	93				
+//
+# orfm.bz_8.1_147 Length: 85
+# orfm.bz_8.1_147 Number of predicted TMRs: 1
+orfm.bz_8.1_147	signal	1	21				
+orfm.bz_8.1_147	outside	22	51				
+orfm.bz_8.1_147	TMhelix	52	72				
+orfm.bz_8.1_147	inside	73	85				
+//
+# orfm.bz_8.1_149 Length: 93
+# orfm.bz_8.1_149 Number of predicted TMRs: 1
+orfm.bz_8.1_149	outside	1	70				
+orfm.bz_8.1_149	TMhelix	71	80				
+orfm.bz_8.1_149	inside	81	93				
+//
+# orfm.bz_8.1_176 Length: 85
+# orfm.bz_8.1_176 Number of predicted TMRs: 0
+orfm.bz_8.1_176	signal	1	21				
+orfm.bz_8.1_176	outside	22	85				
+//
+# orfm.bz_8.1_197 Length: 97
+# orfm.bz_8.1_197 Number of predicted TMRs: 1
+orfm.bz_8.1_197	inside	1	17				
+orfm.bz_8.1_197	TMhelix	18	38				
+orfm.bz_8.1_197	outside	39	97				
+//
+# orfm.bz_8.1_223 Length: 48
+# orfm.bz_8.1_223 Number of predicted TMRs: 0
+orfm.bz_8.1_223	signal	1	41				
+orfm.bz_8.1_223	outside	42	48				
+//
+# orfm.bz_9.1_60 Length: 77
+# orfm.bz_9.1_60 Number of predicted TMRs: 0
+orfm.bz_9.1_60	signal	1	31				
+orfm.bz_9.1_60	outside	32	77				
+//
+# orfm.bz_9.1_105 Length: 91
+# orfm.bz_9.1_105 Number of predicted TMRs: 1
+orfm.bz_9.1_105	outside	1	63				
+orfm.bz_9.1_105	TMhelix	64	85				
+orfm.bz_9.1_105	inside	86	91				
+//
+# orfm.bz_9.1_116 Length: 57
+# orfm.bz_9.1_116 Number of predicted TMRs: 1
+orfm.bz_9.1_116	outside	1	25				
+orfm.bz_9.1_116	TMhelix	26	43				
+orfm.bz_9.1_116	inside	44	57				
+//
+# orfm.bz_9.1_200 Length: 104
+# orfm.bz_9.1_200 Number of predicted TMRs: 1
+orfm.bz_9.1_200	inside	1	15				
+orfm.bz_9.1_200	TMhelix	16	32				
+orfm.bz_9.1_200	outside	33	104				
+//
+# orfm.bz_10.1_30 Length: 94
+# orfm.bz_10.1_30 Number of predicted TMRs: 1
+orfm.bz_10.1_30	inside	1	14				
+orfm.bz_10.1_30	TMhelix	15	35				
+orfm.bz_10.1_30	outside	36	94				
+//
+# orfm.bz_10.1_33 Length: 81
+# orfm.bz_10.1_33 Number of predicted TMRs: 0
+orfm.bz_10.1_33	inside	1	81				
+//
+# orfm.bz_10.1_77 Length: 89
+# orfm.bz_10.1_77 Number of predicted TMRs: 1
+orfm.bz_10.1_77	signal	1	28				
+orfm.bz_10.1_77	outside	29	57				
+orfm.bz_10.1_77	TMhelix	58	67				
+orfm.bz_10.1_77	inside	68	89				
+//
+# orfm.bz_11.1_116 Length: 96
+# orfm.bz_11.1_116 Number of predicted TMRs: 1
+orfm.bz_11.1_116	signal	1	26				
+orfm.bz_11.1_116	outside	27	61				
+orfm.bz_11.1_116	TMhelix	62	79				
+orfm.bz_11.1_116	inside	80	96				
